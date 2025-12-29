@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <link rel="stylesheet" href="style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="card">
+    <header>
+      <div class="logo">
+        <span class="logo-icon">▶</span> Shorts AutoScroll
+        <span class="badge">PRO</span>
+      </div>
+      <div class="lang-switch">
+        <span id="btn-en" class="lang-btn">EN</span>
+        <span class="sep">|</span>
+        <span id="btn-ru" class="lang-btn active">RU</span>
+      </div>
+    </header>
+
+    <div class="content">
+      <!-- Блок 1: Обычный автоскролл -->
+      <div class="row">
+        <div class="label-group">
+          <span class="label" data-lang-key="autoScroll">Авто-скролл</span>
+          <span class="sub-label" data-lang-key="scrollDesc">Листать после окончания</span>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="toggle-scroll">
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <!-- Блок 2: Пропуск длинных (Новый) -->
+      <div class="row">
+        <div class="label-group">
+          <span class="label" data-lang-key="skipLong">Пропуск длинных</span>
+          <span class="sub-label" data-lang-key="skipDesc">Если видео затянулось</span>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="toggle-skip">
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- Настройки задержки (Связаны с Блоком 1) -->
+      <div class="row column">
+        <div class="label-group full-width">
+          <span class="label" data-lang-key="delay">Задержка</span>
+          <span class="value-display" id="delay-display">0.0 s</span>
+        </div>
+        <input type="range" id="delay-slider" min="0" max="3000" step="100" class="range-slider">
+      </div>
+
+      <!-- Настройки времени пропуска (Скрытый блок, Связан с Блоком 2) -->
+      <div class="row column hidden" id="skip-settings-container">
+        <div class="label-group full-width">
+          <span class="label" data-lang-key="skipTimeLabel">Пропускать после</span>
+          <span class="value-display" id="skip-display">60 s</span>
+        </div>
+        <!-- от 5 до 120 секунд -->
+        <input type="range" id="skip-slider" min="5" max="120" step="1" class="range-slider">
+      </div>
+    </div>
+
+    <footer>
+      <div id="status" class="status" data-lang-key="statusReady">Готов к работе</div>
+    </footer>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

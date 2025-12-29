@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "Youtube Shorts AutoScroll",
+  "version": "1.0",
+  "description": "Premium Auto-Scroller for YouTube Shorts",
+  "permissions": ["storage", "tabs"],
+  "host_permissions": ["*://www.youtube.com/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": "YT-icon-deactivated.png", 
+    "default_title": "Youtube Shorts AutoScroll"
+  },
+  "icons": {
+    "128": "YT-icon-store.png"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://www.youtube.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_end"
+    }
+  ]
+}
