@@ -5,13 +5,20 @@ let config = {
   skipLimit: 60
 };
 
-// --- Синхронизация настроек ---
-chrome.storage.local.get(['enabled', 'delay', 'skipEnabled', 'skipLimit'], (res) => {
-  if (res.enabled !== undefined) config.enabled = res.enabled;
-  if (res.delay !== undefined) config.delay = res.delay;
-  if (res.skipEnabled !== undefined) config.skipEnabled = res.skipEnabled;
-  if (res.skipLimit !== undefined) config.skipLimit = res.skipLimit;
-});
+// Переменные состояния
+let isScrolling = false;
+let lastSkippedSrc = ""; // Запоминаем ссылку последнего пропущенного видео
+
+// --- Загрузка настроек ---
+function updateConfig() {
+  chrome.storage.local.get(['enabled', 'delay', 'skipEnabled', 'skipLimit'], (res) => {
+    if (res.enabled !== undefined) config.enabled = res.enabled;
+    if (res.delay !== undefined) config.delay = res.delay;
+    if (res.skipEnabled !== undefined) config.skipEnabled = res.skipEnabled;
+    if (res.skipLimit !== undefined) config.skipLimit = res.skipLimit;
+  });
+}
+updateConfig();
 
 chrome.storage.onChanged.addListener((changes) => {
   if (changes.enabled) config.enabled = changes.enabled.newValue;
@@ -20,100 +27,87 @@ chrome.storage.onChanged.addListener((changes) => {
   if (changes.skipLimit) config.skipLimit = changes.skipLimit.newValue;
 });
 
-// --- Скролл ---
+// --- Логика Скролла ---
 const triggerScroll = () => {
-  console.log('[Shorts Flow] Triggering scroll...');
+  // Посылаем сигнал нажатия стрелки вниз
   const event = new KeyboardEvent('keydown', {
     key: 'ArrowDown', code: 'ArrowDown', bubbles: true, cancelable: true
   });
   document.dispatchEvent(event);
+  console.log('[Shorts Flow] ⬇ Scrolled');
 };
 
-// Функция отложенного скролла (с защитой от двойного срабатывания)
-let isScrolling = false;
-
-const performScroll = () => {
+const performScroll = (reason) => {
   if (isScrolling) return;
   isScrolling = true;
 
-  console.log(`[Shorts Flow] Next in ${config.delay}ms`);
+  console.log(`[Shorts Flow] Action: ${reason}. Waiting ${config.delay}ms`);
   
-  setTimeout(() => {
-    triggerScroll();
-    // Сбрасываем флаг чуть позже, чтобы успела пройти анимация
-    setTimeout(() => { isScrolling = false; }, 1000);
-  }, config.delay);
-};
-
-// --- Логика проверки длительности ---
-const checkDurationAndSkip = (video) => {
-  if (!config.enabled || !config.skipEnabled || isScrolling) return;
-  if (!window.location.href.includes('/shorts/')) return;
-  
-  // Если метаданные (длина) еще не загрузились, duration будет NaN
-  if (Number.isNaN(video.duration)) return;
-
-  // Если видео длиннее лимита
-  if (video.duration > config.skipLimit) {
-    console.log(`[Shorts Flow] Video too long (${video.duration.toFixed(1)}s > ${config.skipLimit}s). Skipping immediately.`);
-    performScroll();
+  // Если есть задержка - ждем, если нет - сразу
+  if (config.delay > 0) {
+      setTimeout(() => {
+        triggerScroll();
+        setTimeout(() => { isScrolling = false; }, 1000); // Блокировка на время анимации
+      }, config.delay);
+  } else {
+      triggerScroll();
+      // При нулевой задержке блокировка короче, но нужна, чтобы не проскочить 2 видео
+      setTimeout(() => { isScrolling = false; }, 800); 
   }
 };
 
-// --- Обработчики событий ---
+// --- Обработчик окончания видео ---
+// Мы не вешаем это через addEventListener, чтобы не дублировать логику.
+// Мы проверяем ended свойство в цикле.
+const checkVideoEnded = (video) => {
+    if (video.ended) {
+        performScroll("Video Ended");
+    }
+};
 
-// 1. Обычное окончание видео
-const onVideoEnded = (e) => {
+// --- Главный цикл проверки (Running Heartbeat) ---
+const checkLoop = () => {
   if (!config.enabled) return;
-  if (!window.location.href.includes('/shorts/')) return;
-  
-  // Если мы уже пропустили его из-за длины, ничего не делаем
-  if (isScrolling) return;
-
-  performScroll();
-};
-
-// 2. Старт воспроизведения (проверяем длину)
-const onVideoPlay = (e) => {
-  const video = e.target;
-  checkDurationAndSkip(video);
-};
-
-// 3. Загрузка метаданных (на случай, если play сработал раньше загрузки длины)
-const onMetadataLoaded = (e) => {
-  const video = e.target;
-  // Проверяем, играет ли видео сейчас (чтобы не скипать предзагруженные видео снизу)
-  if (!video.paused) {
-    checkDurationAndSkip(video);
-  }
-};
-
-// --- Процессор видео (ищет новые видео на странице) ---
-const processVideos = () => {
   if (!window.location.href.includes('/shorts/')) return;
 
   const videos = document.querySelectorAll('video');
   
   videos.forEach(video => {
-    // Убираем loop, чтобы работало окончание видео
+    // 1. АГРЕССИВНО удаляем loop.
+    // YouTube пытается вернуть этот атрибут при каждом переключении, 
+    // поэтому мы удаляем его в каждом цикле, а не один раз.
     if (video.hasAttribute('loop')) {
       video.removeAttribute('loop');
     }
 
-    // Если мы уже инициализировали это видео, пропускаем
-    if (video.dataset.shortsFlowInit) return;
-    video.dataset.shortsFlowInit = 'true';
+    // Мы работаем только с активным (играющим) видео или только что закончившимся
+    // Игнорируем предзагруженные видео (которые paused)
+    if (video.paused && !video.ended) return;
 
-    // Слушаем конец видео
-    video.addEventListener('ended', onVideoEnded);
-    
-    // Слушаем старт видео (для пропуска по длине)
-    video.addEventListener('play', onVideoPlay);
-    
-    // Слушаем загрузку данных о длине (для надежности)
-    video.addEventListener('loadedmetadata', onMetadataLoaded);
+    // 2. Проверка: Видео закончилось?
+    if (video.ended && !isScrolling) {
+        performScroll("Video Ended");
+        return;
+    }
+
+    // 3. Проверка: Лимит длины
+    if (config.skipEnabled && !isScrolling) {
+      // Если длительность еще не известна
+      if (!video.duration || Number.isNaN(video.duration)) return;
+
+      // Сравниваем URL. Если мы уже пропустили ИМЕННО ЭТУ ссылку, не пытаемся снова.
+      // Это решает проблему "переиспользования" плеера.
+      if (video.src === lastSkippedSrc) return;
+
+      if (video.duration > config.skipLimit) {
+        console.log(`[Shorts Flow] Too long (${video.duration.toFixed(1)}s). Skipping.`);
+        
+        lastSkippedSrc = video.src; // Запоминаем "плохую" ссылку
+        performScroll("Duration Limit");
+      }
+    }
   });
 };
 
-// Запуск интервала проверки
-setInterval(processVideos, 1000);
+// Запускаем проверку часто (каждые 400мс), чтобы интерфейс был отзывчивым
+setInterval(checkLoop, 400);

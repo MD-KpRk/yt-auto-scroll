@@ -1,25 +1,24 @@
-// Словарь переводов
 const translations = {
   ru: {
     autoScroll: "Авто-скролл",
     scrollDesc: "Листать после окончания",
-    skipLong: "Лимит длины",
-    skipDesc: "Пропускать длинные видео",
-    delay: "Задержка между видео",
-    skipTimeLabel: "Если длиннее чем", // Изменен текст
+    skipLong: "Пропускать длинные",
+    skipDesc: "Сразу пропускать длинные",
+    delay: "Задержка скролла",
+    skipTimeLabel: "Пропустить если длиннее чем",
     statusReady: "Готов к работе",
-    statusSaved: "Настройки сохранены",
+    statusSaved: "Сохранено",
     sec: "сек"
   },
   en: {
     autoScroll: "Auto-Scroll",
     scrollDesc: "Scroll on video end",
     skipLong: "Duration Limit",
-    skipDesc: "Skip long videos immediately",
-    delay: "Delay between videos",
-    skipTimeLabel: "If longer than", // Изменен текст
+    skipDesc: "Skip long immediately",
+    delay: "Scroll Delay",
+    skipTimeLabel: "Skip if longer than",
     statusReady: "Ready to work",
-    statusSaved: "Settings saved",
+    statusSaved: "Saved",
     sec: "sec"
   }
 };
@@ -27,7 +26,6 @@ const translations = {
 let currentLang = 'ru';
 
 document.addEventListener('DOMContentLoaded', () => {
-  // Элементы
   const toggleScroll = document.getElementById('toggle-scroll');
   const delaySlider = document.getElementById('delay-slider');
   const delayDisplay = document.getElementById('delay-display');
@@ -41,7 +39,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnRu = document.getElementById('btn-ru');
   const btnEn = document.getElementById('btn-en');
 
-  // --- Управление видимостью слайдера пропуска ---
   function updateSkipVisibility() {
     if (toggleSkip.checked) {
       skipContainer.classList.remove('hidden');
@@ -50,7 +47,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // --- Функция применения языка ---
   function applyLanguage(lang) {
     currentLang = lang;
     if (lang === 'ru') {
@@ -67,38 +63,28 @@ document.addEventListener('DOMContentLoaded', () => {
         el.textContent = translations[lang][key];
       }
     });
-
     updateDisplays();
   }
 
-  // --- Обновление цифр ---
   function updateDisplays() {
     const secText = translations[currentLang].sec;
-    // Задержка
     delayDisplay.textContent = (delaySlider.value / 1000).toFixed(1) + ' ' + secText;
-    // Пропуск
     skipDisplay.textContent = skipSlider.value + ' ' + secText;
   }
 
-  // --- Загрузка настроек ---
   chrome.storage.local.get(['enabled', 'delay', 'language', 'skipEnabled', 'skipLimit'], (result) => {
-    // 1. Основной скролл
     toggleScroll.checked = result.enabled !== false;
     delaySlider.value = result.delay !== undefined ? result.delay : 0;
     
-    // 2. Пропуск длинных (по дефолту выключен)
     toggleSkip.checked = result.skipEnabled === true;
     skipSlider.value = result.skipLimit || 60; 
 
-    // 3. Язык
     const savedLang = result.language || 'ru';
     
-    // Применяем
     updateSkipVisibility();
     applyLanguage(savedLang); 
   });
 
-  // --- Сохранение ---
   function saveSettings() {
     const settings = {
       enabled: toggleScroll.checked,
@@ -121,7 +107,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // --- Слушатели ---
   btnEn.addEventListener('click', () => { applyLanguage('en'); saveSettings(); });
   btnRu.addEventListener('click', () => { applyLanguage('ru'); saveSettings(); });
 
