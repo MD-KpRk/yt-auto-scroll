@@ -7,7 +7,7 @@ let config = {
 
 // Переменные состояния
 let isScrolling = false;
-let lastSkippedSrc = ""; // Запоминаем ссылку последнего пропущенного видео
+let lastSkippedSrc = ""; 
 
 // --- Загрузка настроек ---
 function updateConfig() {
@@ -29,7 +29,6 @@ chrome.storage.onChanged.addListener((changes) => {
 
 // --- Логика Скролла ---
 const triggerScroll = () => {
-  // Посылаем сигнал нажатия стрелки вниз
   const event = new KeyboardEvent('keydown', {
     key: 'ArrowDown', code: 'ArrowDown', bubbles: true, cancelable: true
   });
@@ -41,47 +40,37 @@ const performScroll = (reason) => {
   if (isScrolling) return;
   isScrolling = true;
 
-  console.log(`[Shorts Flow] Action: ${reason}. Waiting ${config.delay}ms`);
+  console.log(`[Shorts Flow] Action: ${reason}.`);
   
-  // Если есть задержка - ждем, если нет - сразу
+  // Если задержка > 0, ждем. Если 0 - листаем моментально.
   if (config.delay > 0) {
       setTimeout(() => {
         triggerScroll();
-        setTimeout(() => { isScrolling = false; }, 1000); // Блокировка на время анимации
+        setTimeout(() => { isScrolling = false; }, 1000);
       }, config.delay);
   } else {
       triggerScroll();
-      // При нулевой задержке блокировка короче, но нужна, чтобы не проскочить 2 видео
-      setTimeout(() => { isScrolling = false; }, 800); 
+      // Уменьшил время блокировки до 0.5 сек для более быстрой реакции
+      setTimeout(() => { isScrolling = false; }, 500); 
   }
 };
 
-// --- Обработчик окончания видео ---
-// Мы не вешаем это через addEventListener, чтобы не дублировать логику.
-// Мы проверяем ended свойство в цикле.
-const checkVideoEnded = (video) => {
-    if (video.ended) {
-        performScroll("Video Ended");
-    }
-};
-
-// --- Главный цикл проверки (Running Heartbeat) ---
+// --- Главный цикл ---
 const checkLoop = () => {
   if (!config.enabled) return;
+  // Простая проверка URL (быстрее, чем includes каждый раз, но includes надежнее)
   if (!window.location.href.includes('/shorts/')) return;
 
   const videos = document.querySelectorAll('video');
   
   videos.forEach(video => {
-    // 1. АГРЕССИВНО удаляем loop.
-    // YouTube пытается вернуть этот атрибут при каждом переключении, 
-    // поэтому мы удаляем его в каждом цикле, а не один раз.
+    // 1. Удаляем LOOP (постоянно, чтобы наверняка)
     if (video.hasAttribute('loop')) {
       video.removeAttribute('loop');
     }
 
-    // Мы работаем только с активным (играющим) видео или только что закончившимся
-    // Игнорируем предзагруженные видео (которые paused)
+    // Игнорируем видео, которые не активны (на паузе и не закончились)
+    // Это важно, чтобы не триггерить на предзагруженные видео
     if (video.paused && !video.ended) return;
 
     // 2. Проверка: Видео закончилось?
@@ -92,22 +81,26 @@ const checkLoop = () => {
 
     // 3. Проверка: Лимит длины
     if (config.skipEnabled && !isScrolling) {
-      // Если длительность еще не известна
+      // Если метаданные еще не подгрузились
       if (!video.duration || Number.isNaN(video.duration)) return;
 
-      // Сравниваем URL. Если мы уже пропустили ИМЕННО ЭТУ ссылку, не пытаемся снова.
-      // Это решает проблему "переиспользования" плеера.
+      // Проверяем, не пытаемся ли мы пропустить то же самое видео (защита от повтора)
       if (video.src === lastSkippedSrc) return;
 
       if (video.duration > config.skipLimit) {
-        console.log(`[Shorts Flow] Too long (${video.duration.toFixed(1)}s). Skipping.`);
+        console.log(`[Shorts Flow] Too long (${video.duration.toFixed(1)}s). FAST SKIP.`);
         
-        lastSkippedSrc = video.src; // Запоминаем "плохую" ссылку
+        // ВАЖНО: Сразу ставим на паузу! 
+        // Это уберет звук и движение, пользователь поймет, что видео скипнуто.
+        video.pause();
+        
+        lastSkippedSrc = video.src;
         performScroll("Duration Limit");
       }
     }
   });
 };
 
-// Запускаем проверку часто (каждые 400мс), чтобы интерфейс был отзывчивым
-setInterval(checkLoop, 400);
+// УСКОРИЛИ: Теперь проверка каждые 100мс (было 400мс)
+// Это сделает реакцию почти мгновенной
+setInterval(checkLoop, 100);

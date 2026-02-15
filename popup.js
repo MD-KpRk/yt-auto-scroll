@@ -2,7 +2,7 @@ const translations = {
   ru: {
     autoScroll: "Авто-скролл",
     scrollDesc: "Листать после окончания",
-    skipLong: "Пропускать длинные",
+    skipLong: "Лимит длительности",
     skipDesc: "Сразу пропускать длинные",
     delay: "Задержка скролла",
     skipTimeLabel: "Пропустить если длиннее чем",
