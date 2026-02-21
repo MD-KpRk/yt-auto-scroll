@@ -4,7 +4,7 @@ body {
   background-color: #0f0f0f;
   font-family: 'Inter', sans-serif;
   color: #fff;
-  user-select: none; /* Чтобы текст не выделялся при кликах */
+  user-select: none;
 }
 
 .card {
@@ -22,7 +22,7 @@ header {
 
 .logo {
   font-weight: 600;
-  font-size: 16px; /* Чуть уменьшил, чтобы влез переключатель */
+  font-size: 16px;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -43,7 +43,6 @@ header {
   margin-left: 5px;
 }
 
-/* Language Switcher Styles */
 .lang-switch {
   font-size: 11px;
   font-weight: 600;
@@ -72,7 +71,6 @@ header {
   color: #333;
 }
 
-/* Остальные стили (без изменений, но повторены для целостности) */
 .row {
   display: flex;
   justify-content: space-between;

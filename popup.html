@@ -20,7 +20,6 @@
     </header>
 
     <div class="content">
-      <!-- Блок 1: Обычный автоскролл -->
       <div class="row">
         <div class="label-group">
           <span class="label" data-lang-key="autoScroll">Авто-скролл</span>
@@ -32,7 +31,6 @@
         </label>
       </div>
 
-      <!-- Блок 2: Пропуск длинных (Новый) -->
       <div class="row">
         <div class="label-group">
           <span class="label" data-lang-key="skipLong">Пропуск длинных</span>
@@ -46,7 +44,6 @@
 
       <div class="divider"></div>
 
-      <!-- Настройки задержки (Связаны с Блоком 1) -->
       <div class="row column">
         <div class="label-group full-width">
           <span class="label" data-lang-key="delay">Задержка</span>
@@ -55,13 +52,11 @@
         <input type="range" id="delay-slider" min="0" max="3000" step="100" class="range-slider">
       </div>
 
-      <!-- Настройки времени пропуска (Скрытый блок, Связан с Блоком 2) -->
       <div class="row column hidden" id="skip-settings-container">
         <div class="label-group full-width">
           <span class="label" data-lang-key="skipTimeLabel">Пропускать после</span>
           <span class="value-display" id="skip-display">60 s</span>
         </div>
-        <!-- от 5 до 120 секунд -->
         <input type="range" id="skip-slider" min="5" max="120" step="1" class="range-slider">
       </div>
     </div>
