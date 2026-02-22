@@ -74,7 +74,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   chrome.storage.local.get(['enabled', 'delay', 'language', 'skipEnabled', 'skipLimit'], (result) => {
     toggleScroll.checked = result.enabled !== false;
-    delaySlider.value = result.delay !== undefined ? result.delay : 0;
+    delaySlider.value = result.delay !== undefined ? result.delay : 2000;
     
     toggleSkip.checked = result.skipEnabled === true;
     skipSlider.value = result.skipLimit || 60; 

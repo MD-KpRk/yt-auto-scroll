@@ -1,6 +1,6 @@
 let config = { 
   enabled: true, 
-  delay: 0,
+  delay: 2000,
   skipEnabled: false,
   skipLimit: 60
 };
