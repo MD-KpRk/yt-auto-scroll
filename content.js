@@ -20,7 +20,7 @@ class YTShortsAutoScroller {
       isPausedByUser: false,
       manualScrollBlock: false,
       currentVideoId: "",
-      skippedBuffer: [],
+      skippedBuffer:[],
       scrollTimeout: null,
       manualScrollTimeout: null,
       activeRing: null,
@@ -216,13 +216,21 @@ class YTShortsAutoScroller {
       const bg = this.createSvg('circle', { class: 'bg', cx: '50', cy: '50', r: '46' });
       const progress = this.createSvg('circle', { class: 'progress', cx: '50', cy: '50', r: '46' });
       
-      const iconGroup = this.createSvg('g', { transform: 'rotate(90, 50, 50) translate(32, 32) scale(1.5)' });
-      const iconPath = this.createSvg('path', { 
-        d: 'M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z', 
-        fill: 'rgba(255, 255, 255, 0.95)' 
+      const iconGroup = this.createSvg('g', { 
+        transform: 'rotate(90, 50, 50) translate(34, 34) scale(1.33)',
+        fill: 'none',
+        stroke: 'rgba(255, 255, 255, 0.95)',
+        'stroke-width': '2',
+        'stroke-linecap': 'round',
+        'stroke-linejoin': 'round'
       });
+      
+      const path1 = this.createSvg('path', { d: 'M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8' });
+      const path2 = this.createSvg('path', { d: 'M21 3v5h-5' });
 
-      iconGroup.appendChild(iconPath);
+      iconGroup.appendChild(path1);
+      iconGroup.appendChild(path2);
+
       this.state.activeRing.appendChild(shadowBg);
       this.state.activeRing.appendChild(bg);
       this.state.activeRing.appendChild(progress);
