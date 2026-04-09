@@ -1,29 +1,5 @@
-const translations = {
-  ru: {
-    autoScroll: "Авто-скролл",
-    scrollDesc: "Листать после окончания",
-    skipLong: "Лимит длительности",
-    skipDesc: "Сразу пропускать длинные",
-    delay: "Задержка скролла",
-    skipTimeLabel: "Пропустить если длиннее чем",
-    statusReady: "Готов к работе",
-    statusSaved: "Сохранено",
-    sec: "сек"
-  },
-  en: {
-    autoScroll: "Auto-Scroll",
-    scrollDesc: "Scroll on video end",
-    skipLong: "Duration Limit",
-    skipDesc: "Skip long immediately",
-    delay: "Scroll Delay",
-    skipTimeLabel: "Skip if longer than",
-    statusReady: "Ready to work",
-    statusSaved: "Saved",
-    sec: "sec"
-  }
-};
-
-let currentLang = 'ru';
+let currentLang = 'en';
+let translations = {};
 
 document.addEventListener('DOMContentLoaded', () => {
   const toggleScroll = document.getElementById('toggle-scroll');
@@ -47,8 +23,26 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  function applyLanguage(lang) {
+  // Динамически запрашиваем файл локализации
+  async function fetchTranslations(lang) {
+    try {
+      const url = chrome.runtime.getURL(`_locales/${lang}/messages.json`);
+      const res = await fetch(url);
+      const json = await res.json();
+      const dict = {};
+      for (const key in json) {
+        dict[key] = json[key].message;
+      }
+      return dict;
+    } catch (e) {
+      console.error('Failed to load translations:', e);
+      return null;
+    }
+  }
+
+  async function applyLanguage(lang) {
     currentLang = lang;
+    
     if (lang === 'ru') {
       btnRu.classList.add('active');
       btnEn.classList.remove('active');
@@ -57,17 +51,21 @@ document.addEventListener('DOMContentLoaded', () => {
       btnRu.classList.remove('active');
     }
 
-    document.querySelectorAll('[data-lang-key]').forEach(el => {
-      const key = el.getAttribute('data-lang-key');
-      if (translations[lang][key]) {
-        el.textContent = translations[lang][key];
-      }
-    });
-    updateDisplays();
+    const dict = await fetchTranslations(lang);
+    if (dict) {
+      translations = dict;
+      document.querySelectorAll('[data-lang-key]').forEach(el => {
+        const key = el.getAttribute('data-lang-key');
+        if (translations[key]) {
+          el.textContent = translations[key];
+        }
+      });
+      updateDisplays();
+    }
   }
 
   function updateDisplays() {
-    const secText = translations[currentLang].sec;
+    const secText = translations.sec || (currentLang === 'ru' ? 'сек' : 'sec');
     delayDisplay.textContent = (delaySlider.value / 1000).toFixed(1) + ' ' + secText;
     skipDisplay.textContent = skipSlider.value + ' ' + secText;
   }
@@ -79,7 +77,11 @@ document.addEventListener('DOMContentLoaded', () => {
     toggleSkip.checked = result.skipEnabled === true;
     skipSlider.value = result.skipLimit || 60; 
 
-    const savedLang = result.language || 'ru';
+    // Умное автоопределение языка браузера при первом запуске
+    let savedLang = result.language;
+    if (!savedLang) {
+      savedLang = chrome.i18n.getUILanguage().startsWith('ru') ? 'ru' : 'en';
+    }
     
     updateSkipVisibility();
     applyLanguage(savedLang); 
@@ -98,17 +100,17 @@ document.addEventListener('DOMContentLoaded', () => {
     updateSkipVisibility();
 
     chrome.storage.local.set(settings, () => {
-      status.textContent = translations[currentLang].statusSaved;
+      status.textContent = translations.statusSaved || 'Saved';
       status.classList.add('saved');
       setTimeout(() => {
-        status.textContent = translations[currentLang].statusReady;
+        status.textContent = translations.statusReady || 'Ready to work';
         status.classList.remove('saved');
       }, 1500);
     });
   }
 
-  btnEn.addEventListener('click', () => { applyLanguage('en'); saveSettings(); });
-  btnRu.addEventListener('click', () => { applyLanguage('ru'); saveSettings(); });
+  btnEn.addEventListener('click', () => { applyLanguage('en').then(saveSettings); });
+  btnRu.addEventListener('click', () => { applyLanguage('ru').then(saveSettings); });
 
   toggleScroll.addEventListener('change', saveSettings);
   delaySlider.addEventListener('input', updateDisplays);

@@ -1,6 +1,6 @@
 const ICONS = {
-  ACTIVE: 'YT-icon-active.png',
-  INACTIVE: 'YT-icon-deactivated.png'
+  ACTIVE: '../assets/icons/YT-icon-active.png',
+  INACTIVE: '../assets/icons/YT-icon-deactivated.png'
 };
 
 function updateIcon(tabId, url) {

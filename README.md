@@ -3,12 +3,12 @@
 [![Chrome Web Store](https://img.shields.io/badge/Chrome_Web_Store-Install-blue?logo=googlechrome&logoColor=white)](https://chromewebstore.google.com/detail/cfalfdakejchchmgepmoloojdclhcmif?utm_source=item-share-cb)
 
 <p align="center">
-  <a href="https://raw.githubusercontent.com/MD-KpRk/yt-auto-scroll/main/screenshots/scr1.png">
-    <img src="screenshots/scr1.png" width="300" alt="Скриншот 1">
+  <a href="https://raw.githubusercontent.com/MD-KpRk/yt-auto-scroll/main/assets/screenshots/scr1.png">
+    <img src="assets/screenshots/scr1.png" width="300" alt="Скриншот 1">
   </a>
   &nbsp;&nbsp;&nbsp;&nbsp;
-  <a href="https://raw.githubusercontent.com/MD-KpRk/yt-auto-scroll/main/screenshots/scr2.png">
-    <img src="screenshots/scr2.png" width="300" alt="Скриншот 2">
+  <a href="https://raw.githubusercontent.com/MD-KpRk/yt-auto-scroll/main/assets/screenshots/scr2.png">
+    <img src="assets/screenshots/scr2.png" width="300" alt="Скриншот 2">
   </a>
 </p>
 

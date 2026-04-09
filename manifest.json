@@ -1,26 +1,38 @@
 {
   "manifest_version": 3,
-  "name": "Youtube Shorts AutoScroll",
-  "version": "1.2.1",
-  "description": "Premium Auto-Scroller for YouTube Shorts",
+  "name": "__MSG_extName__",
+  "version": "1.2.2",
+  "description": "__MSG_extDesc__",
+  "default_locale": "en",
   "permissions": ["storage", "tabs"],
   "host_permissions": ["*://www.youtube.com/*"],
+  
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "scripts/background.js"
   },
+  
   "action": {
-    "default_popup": "popup.html",
-    "default_icon": "YT-icon-deactivated.png", 
-    "default_title": "Youtube Shorts AutoScroll"
+    "default_popup": "popup/popup.html",        
+    "default_icon": "assets/icons/YT-icon-deactivated.png",
+    "default_title": "__MSG_extName__"
   },
+  
   "icons": {
-    "128": "YT-icon-store.png"
+    "128": "assets/icons/YT-icon-store.png"
   },
+  
   "content_scripts": [
     {
-      "matches": ["*://www.youtube.com/*"],
-      "js": ["content.js"],
+      "matches":["*://www.youtube.com/*"],
+      "js": ["scripts/content.js"],
       "run_at": "document_end"
+    }
+  ],
+  
+  "web_accessible_resources": [
+    {
+      "resources": ["_locales/*/messages.json"],
+      "matches": ["*://www.youtube.com/*"]
     }
   ]
 }

@@ -11,8 +11,10 @@ class YTShortsAutoScroller {
       delay: 1000,
       skipEnabled: false,
       skipLimit: 60,
-      language: 'ru'
+      language: 'en'
     };
+    
+    this.i18n = null; // Хранилище подгруженных переводов
 
     this.state = {
       isScrolling: false,
@@ -39,14 +41,42 @@ class YTShortsAutoScroller {
 
   loadStorage() {
     chrome.storage.local.get(['enabled', 'delay', 'skipEnabled', 'skipLimit', 'language'], (res) => {
+      // Если язык не задан, используем язык браузера
+      if (!res.language) {
+        res.language = chrome.i18n.getUILanguage().startsWith('ru') ? 'ru' : 'en';
+      }
       Object.assign(this.config, res);
+      this.loadI18n();
     });
+
     chrome.storage.onChanged.addListener((changes) => {
+      let langChanged = false;
       for (const key in changes) {
         this.config[key] = changes[key].newValue;
+        if (key === 'language') langChanged = true;
       }
+      if (langChanged) this.loadI18n();
     });
   }
+
+  async loadI18n() {
+    try {
+      const url = chrome.runtime.getURL(`_locales/${this.config.language}/messages.json`);
+      const res = await fetch(url);
+      const json = await res.json();
+      this.i18n = {
+        cancelScroll: json.cancelScroll.message,
+        resumeScroll: json.resumeScroll.message
+      };
+    } catch (e) {
+      // Безопасный фоллбэк: берем язык из нативного API (по умолчанию язык браузера)
+      this.i18n = {
+        cancelScroll: chrome.i18n.getMessage("cancelScroll") || 'Cancel Auto-Scroll',
+        resumeScroll: chrome.i18n.getMessage("resumeScroll") || 'Resume Auto-Scroll'
+      };
+    }
+  }
+  
 
   blockAutoScroll() {
     this.state.manualScrollBlock = true;
@@ -164,7 +194,7 @@ class YTShortsAutoScroller {
   }
 
   getCancelHTML() {
-    const text = this.config.language === 'en' ? 'Cancel Auto-Scroll' : 'Отменить авто-скролл';
+    const text = this.i18n ? this.i18n.cancelScroll : 'Cancel Auto-Scroll';
     return `
       <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
         <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
@@ -174,7 +204,7 @@ class YTShortsAutoScroller {
   }
 
   getResumeHTML() {
-    const text = this.config.language === 'en' ? 'Resume Auto-Scroll' : 'Продолжить авто-скролл';
+    const text = this.i18n ? this.i18n.resumeScroll : 'Resume Auto-Scroll';
     return `
       <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
         <path d="M8 5v14l11-7z"/>

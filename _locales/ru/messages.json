@@ -1,0 +1,15 @@
+{
+  "extName": { "message": "YouTube Shorts: Авто-скролл" },
+  "extDesc": { "message": "Автоматическое перелистывание видео YouTube Shorts. Настраиваемая задержка, пропуск длинных видео и удобное управление." },
+  "autoScroll": { "message": "Авто-скролл" },
+  "scrollDesc": { "message": "Включить авто-скролл" },
+  "skipLong": { "message": "Лимит длительности" },
+  "skipDesc": { "message": "Сразу пропускать длинные шортсы" },
+  "delay": { "message": "Задержка скролла" },
+  "skipTimeLabel": { "message": "Пропускать если длиннее" },
+  "statusReady": { "message": "Готов к работе" },
+  "statusSaved": { "message": "Сохранено" },
+  "sec": { "message": "сек" },
+  "cancelScroll": { "message": "Отменить авто-скролл" },
+  "resumeScroll": { "message": "Продолжить авто-скролл" }
+}
