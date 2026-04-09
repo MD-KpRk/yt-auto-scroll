@@ -13,8 +13,8 @@ class YTShortsAutoScroller {
       skipLimit: 60,
       language: 'en'
     };
-    
-    this.i18n = null; // Хранилище подгруженных переводов
+
+    this.i18n = null;
 
     this.state = {
       isScrolling: false,
@@ -23,6 +23,8 @@ class YTShortsAutoScroller {
       manualScrollBlock: false,
       currentVideoId: "",
       skippedBuffer:[],
+      isForceSkipping: false,     // Режим настойчивого пропуска
+      forceSkipVideoId: null,     // Какое именно видео мы сейчас пытаемся пропустить
       scrollTimeout: null,
       manualScrollTimeout: null,
       activeRing: null,
@@ -41,7 +43,6 @@ class YTShortsAutoScroller {
 
   loadStorage() {
     chrome.storage.local.get(['enabled', 'delay', 'skipEnabled', 'skipLimit', 'language'], (res) => {
-      // Если язык не задан, используем язык браузера
       if (!res.language) {
         res.language = chrome.i18n.getUILanguage().startsWith('ru') ? 'ru' : 'en';
       }
@@ -69,14 +70,12 @@ class YTShortsAutoScroller {
         resumeScroll: json.resumeScroll.message
       };
     } catch (e) {
-      // Безопасный фоллбэк: берем язык из нативного API (по умолчанию язык браузера)
       this.i18n = {
         cancelScroll: chrome.i18n.getMessage("cancelScroll") || 'Cancel Auto-Scroll',
         resumeScroll: chrome.i18n.getMessage("resumeScroll") || 'Resume Auto-Scroll'
       };
     }
   }
-  
 
   blockAutoScroll() {
     this.state.manualScrollBlock = true;
@@ -450,25 +449,52 @@ class YTShortsAutoScroller {
       return;
     }
 
+    // 1. ПРОВЕРКА ПРОПУСКА (Сначала проверяем, не слишком ли длинное видео)
+    if (this.config.skipEnabled && !this.state.isWaiting) {
+      if (duration && isFinite(duration) && duration > this.config.skipLimit) {
+        // Если видим это длинное видео впервые
+        if (!this.state.skippedBuffer.includes(videoId)) {
+          
+          // Сразу, 100% надёжно заносим в буфер (чтобы не пропустить повторно при возврате)
+          this.state.skippedBuffer.push(videoId);
+          if (this.state.skippedBuffer.length > 20) {
+            this.state.skippedBuffer.shift();
+          }
+
+          // Включаем "настойчивый режим" для этого конкретного видео
+          this.state.isForceSkipping = true;
+          this.state.forceSkipVideoId = videoId;
+        }
+      }
+    }
+
+    // 2. ОТРАБОТКА НАСТОЙЧИВОГО РЕЖИМА ПРОПУСКА
+    // Если скрипт решил пропустить видео - он будет пытаться это сделать, пока не получится
+    if (this.state.isForceSkipping) {
+      if (this.state.forceSkipVideoId !== videoId) {
+        // Сработало! ID видео сменился, значит скролл прошел успешно. Выключаем режим.
+        this.state.isForceSkipping = false;
+        this.state.forceSkipVideoId = null;
+      } else {
+        // Видео всё еще старое. Значит нужно продолжать попытки скролла.
+        if (!this.state.isScrolling) {
+          if (!activeVideo.paused) {
+            activeVideo.pause();
+          }
+          this.performScroll(activeVideo, true);
+        }
+        // Обязательно выходим отсюда (return), чтобы не сработали обычные проверки ниже
+        return; 
+      }
+    }
+
+    // 3. ОБЫЧНАЯ ПАУЗА ПОЛЬЗОВАТЕЛЯ
     if (activeVideo.paused && !isEnded) return;
 
+    // 4. ОБЫЧНЫЙ АВТО-СКРОЛЛ ПО ОКОНЧАНИЮ ВИДЕО
     if (isEnded && !this.state.isScrolling && !this.state.isWaiting) {
       this.performScroll(activeVideo, false);
       return;
-    }
-
-    if (this.config.skipEnabled && !this.state.isScrolling && !this.state.isWaiting) {
-      if (!duration || !isFinite(duration)) return;
-      if (this.state.skippedBuffer.includes(videoId)) return;
-
-      if (duration > this.config.skipLimit) {
-        activeVideo.pause();
-        this.state.skippedBuffer.push(videoId);
-        if (this.state.skippedBuffer.length > 20) {
-          this.state.skippedBuffer.shift();
-        }
-        this.performScroll(activeVideo, true);
-      }
     }
   }
 }
