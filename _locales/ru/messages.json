@@ -11,5 +11,7 @@
   "statusSaved": { "message": "Сохранено" },
   "sec": { "message": "сек" },
   "cancelScroll": { "message": "Отменить авто-скролл" },
-  "resumeScroll": { "message": "Продолжить авто-скролл" }
+  "resumeScroll": { "message": "Продолжить авто-скролл" },
+  "skipReason": { "message": "Длиннее {limit} сек" },
+  "watchVideo": { "message": "Продолжить просмотр" }
 }

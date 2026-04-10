@@ -11,5 +11,7 @@
   "statusSaved": { "message": "Saved" },
   "sec": { "message": "sec" },
   "cancelScroll": { "message": "Cancel Auto-Scroll" },
-  "resumeScroll": { "message": "Resume Auto-Scroll" }
+  "resumeScroll": { "message": "Resume Auto-Scroll" },
+  "skipReason": { "message": "Longer than {limit} sec" },
+  "watchVideo": { "message": "Continue watching" }
 }

@@ -23,12 +23,16 @@ class YTShortsAutoScroller {
       manualScrollBlock: false,
       currentVideoId: "",
       skippedBuffer:[],
-      isForceSkipping: false,     // Режим настойчивого пропуска
-      forceSkipVideoId: null,     // Какое именно видео мы сейчас пытаемся пропустить
+      
+      isForceSkipping: false,     
+      forceSkipVideoId: null,     
+      lastScrollTime: 0,
+
       scrollTimeout: null,
       manualScrollTimeout: null,
       activeRing: null,
-      activeBtn: null
+      activeBtn: null,
+      activeReason: null
     };
 
     this.init();
@@ -66,13 +70,17 @@ class YTShortsAutoScroller {
       const res = await fetch(url);
       const json = await res.json();
       this.i18n = {
-        cancelScroll: json.cancelScroll.message,
-        resumeScroll: json.resumeScroll.message
+        cancelScroll: json.cancelScroll?.message || 'Cancel Auto-Scroll',
+        resumeScroll: json.resumeScroll?.message || 'Resume Auto-Scroll',
+        skipReason: json.skipReason?.message || 'Longer than {limit} sec',
+        watchVideo: json.watchVideo?.message || 'Continue watching'
       };
     } catch (e) {
       this.i18n = {
         cancelScroll: chrome.i18n.getMessage("cancelScroll") || 'Cancel Auto-Scroll',
-        resumeScroll: chrome.i18n.getMessage("resumeScroll") || 'Resume Auto-Scroll'
+        resumeScroll: chrome.i18n.getMessage("resumeScroll") || 'Resume Auto-Scroll',
+        skipReason: chrome.i18n.getMessage("skipReason") || 'Longer than {limit} sec',
+        watchVideo: chrome.i18n.getMessage("watchVideo") || 'Continue watching'
       };
     }
   }
@@ -188,6 +196,30 @@ class YTShortsAutoScroller {
         background: rgba(255, 0, 0, 0.9);
         box-shadow: 0 4px 16px rgba(255, 0, 0, 0.4);
       }
+      .yt-autoscroll-reason {
+        position: absolute;
+        top: calc(50% - 85px);
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(255, 0, 51, 0.85);
+        color: #fff;
+        font-family: "Roboto", "Arial", sans-serif;
+        font-size: 13px;
+        font-weight: 600;
+        padding: 6px 14px;
+        border-radius: 20px;
+        z-index: 10000;
+        white-space: nowrap;
+        pointer-events: none;
+        backdrop-filter: blur(4px);
+        -webkit-backdrop-filter: blur(4px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        animation: yt-reason-fade 0.3s ease-out;
+      }
+      @keyframes yt-reason-fade {
+        from { opacity: 0; transform: translate(-50%, 10px); }
+        to { opacity: 1; transform: translate(-50%, 0); }
+      }
     `;
     document.head.appendChild(style);
   }
@@ -206,7 +238,17 @@ class YTShortsAutoScroller {
     const text = this.i18n ? this.i18n.resumeScroll : 'Resume Auto-Scroll';
     return `
       <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
-        <path d="M8 5v14l11-7z"/>
+        <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/>
+      </svg>
+      <span>${text}</span>
+    `;
+  }
+
+  getWatchHTML() {
+    const text = this.i18n ? this.i18n.watchVideo : 'Continue watching';
+    return `
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
+        <path d="M8 6.82v10.36c0 .79.87 1.27 1.54.84l8.14-5.18c.62-.39.62-1.29 0-1.69L9.54 5.98C8.87 5.55 8 6.03 8 6.82z"/>
       </svg>
       <span>${text}</span>
     `;
@@ -214,7 +256,7 @@ class YTShortsAutoScroller {
 
   createSvg(tag, attrs) {
     const el = document.createElementNS("http://www.w3.org/2000/svg", tag);
-    for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+    for (const[k, v] of Object.entries(attrs)) el.setAttribute(k, v);
     return el;
   }
 
@@ -228,17 +270,81 @@ class YTShortsAutoScroller {
       this.state.activeBtn.remove();
       this.state.activeBtn = null;
     }
+    if (this.state.activeReason) {
+      this.state.activeReason.remove();
+      this.state.activeReason = null;
+    }
   }
 
-  performScroll(video, forceInstant = false) {
+  bindSafeClick(element, handler) {
+    let lastTime = 0;
+    const handleEvent = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      const now = Date.now();
+      if (now - lastTime > 300) {
+        lastTime = now;
+        handler(e);
+      }
+    };
+    element.addEventListener('mousedown', handleEvent);
+    element.addEventListener('click', handleEvent);
+    element.addEventListener('touchstart', handleEvent, { passive: false });
+  }
+
+  executeSkip(video) {
+    if (video._ytAutoscrollPlayHandler) {
+      video.removeEventListener('play', video._ytAutoscrollPlayHandler);
+      video._ytAutoscrollPlayHandler = null;
+    }
+    this.clearUI();
+    this.state.isWaiting = false;
+    
+    this.state.isForceSkipping = true;
+    this.state.forceSkipVideoId = this.state.currentVideoId;
+    this.state.lastScrollTime = Date.now();
+    this.state.isScrolling = true;
+
+    if (!video.paused) video.pause();
+    this.triggerScroll();
+  }
+
+  cancelSkipAction(video, skipType) {
+    if (video._ytAutoscrollPlayHandler) {
+      video.removeEventListener('play', video._ytAutoscrollPlayHandler);
+      video._ytAutoscrollPlayHandler = null;
+    }
+    this.clearUI();
+    this.state.isWaiting = false;
+    this.state.isPausedByUser = false;
+    
+    if (skipType === 'end') {
+      video.currentTime = 0;
+      video._lastTime = 0;
+    }
+    video.play();
+  }
+
+  performScroll(video, options = {}) {
+    const { forceInstant = false, skipType = 'end', reasonText = null } = options;
+
     if (this.state.isScrolling || this.state.isWaiting || this.state.isPausedByUser) return;
 
     if (this.config.delay > 0 && !forceInstant) {
       this.state.isWaiting = true;
-      video.pause();
+
+      const forcePause = () => {
+        if (this.state.isWaiting && !video.paused) {
+          video.pause();
+        }
+      };
+      forcePause();
+      setTimeout(forcePause, 50);
+      setTimeout(forcePause, 150);
 
       const playerContainer = video.closest('.html5-video-player') || video.parentElement;
-      playerContainer.querySelectorAll('.yt-autoscroll-ring, .yt-autoscroll-control-btn').forEach(el => el.remove());
+      playerContainer.querySelectorAll('.yt-autoscroll-ring, .yt-autoscroll-control-btn, .yt-autoscroll-reason').forEach(el => el.remove());
 
       this.state.activeRing = this.createSvg('svg', { class: 'yt-autoscroll-ring', viewBox: '0 0 100 100' });
       const shadowBg = this.createSvg('circle', { class: 'shadow-bg', cx: '50', cy: '50', r: '43' });
@@ -246,19 +352,28 @@ class YTShortsAutoScroller {
       const progress = this.createSvg('circle', { class: 'progress', cx: '50', cy: '50', r: '46' });
       
       const iconGroup = this.createSvg('g', { 
-        transform: 'rotate(90, 50, 50) translate(34, 34) scale(1.33)',
-        fill: 'none',
-        stroke: 'rgba(255, 255, 255, 0.95)',
-        'stroke-width': '2',
-        'stroke-linecap': 'round',
-        'stroke-linejoin': 'round'
+        transform: 'rotate(90, 50, 50) translate(34, 34) scale(1.33)'
       });
-      
-      const path1 = this.createSvg('path', { d: 'M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8' });
-      const path2 = this.createSvg('path', { d: 'M21 3v5h-5' });
 
-      iconGroup.appendChild(path1);
-      iconGroup.appendChild(path2);
+      // Меняем иконку внутри круга в зависимости от контекста
+      if (skipType === 'long') {
+        iconGroup.setAttribute('fill', 'rgba(255, 255, 255, 0.95)');
+        iconGroup.setAttribute('stroke', 'none');
+        // Треугольник Play
+        const path1 = this.createSvg('path', { d: 'M8 5v14l11-7z' });
+        iconGroup.appendChild(path1);
+      } else {
+        iconGroup.setAttribute('fill', 'none');
+        iconGroup.setAttribute('stroke', 'rgba(255, 255, 255, 0.95)');
+        iconGroup.setAttribute('stroke-width', '2');
+        iconGroup.setAttribute('stroke-linecap', 'round');
+        iconGroup.setAttribute('stroke-linejoin', 'round');
+        // Стандартная стрелочка авто-скролла
+        const path1 = this.createSvg('path', { d: 'M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8' });
+        const path2 = this.createSvg('path', { d: 'M21 3v5h-5' });
+        iconGroup.appendChild(path1);
+        iconGroup.appendChild(path2);
+      }
 
       this.state.activeRing.appendChild(shadowBg);
       this.state.activeRing.appendChild(bg);
@@ -267,96 +382,78 @@ class YTShortsAutoScroller {
       playerContainer.appendChild(this.state.activeRing);
 
       this.state.activeBtn = document.createElement('div');
-      this.state.activeBtn.className = 'yt-autoscroll-control-btn';
-      this.state.activeBtn.innerHTML = this.getCancelHTML();
+      
+      if (skipType === 'long') {
+        this.state.activeBtn.className = 'yt-autoscroll-control-btn resume-mode';
+        this.state.activeBtn.innerHTML = this.getWatchHTML();
+      } else {
+        this.state.activeBtn.className = 'yt-autoscroll-control-btn';
+        this.state.activeBtn.innerHTML = this.getCancelHTML();
+      }
+      
       playerContainer.appendChild(this.state.activeBtn);
 
+      if (reasonText) {
+        this.state.activeReason = document.createElement('div');
+        this.state.activeReason.className = 'yt-autoscroll-reason';
+        this.state.activeReason.textContent = reasonText;
+        playerContainer.appendChild(this.state.activeReason);
+      }
+
       progress.style.transitionDuration = `${this.config.delay}ms`;
-      
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           progress.style.strokeDashoffset = "0";
         });
       });
 
-      const doSkip = () => {
-        if (video._ytAutoscrollPlayHandler) {
-          video.removeEventListener('play', video._ytAutoscrollPlayHandler);
-          video._ytAutoscrollPlayHandler = null;
-        }
-        this.clearUI();
-        this.state.isWaiting = false;
-        this.state.isScrolling = true;
-        this.triggerScroll();
-        setTimeout(() => { this.state.isScrolling = false; }, 800);
-      };
-
-      if (video._ytAutoscrollPlayHandler) {
-        video.removeEventListener('play', video._ytAutoscrollPlayHandler);
-      }
-
       const performTime = Date.now();
       video._ytAutoscrollPlayHandler = () => {
-        if (Date.now() - performTime < 200) return;
+        if (Date.now() - performTime < 300) {
+          forcePause();
+          return;
+        }
         if (!this.state.isWaiting) return;
-        this.clearUI();
-        this.state.isWaiting = false;
-        video.removeEventListener('play', video._ytAutoscrollPlayHandler);
-        video._ytAutoscrollPlayHandler = null;
+        this.cancelSkipAction(video, skipType);
       };
       video.addEventListener('play', video._ytAutoscrollPlayHandler);
 
-      this.state.activeRing.addEventListener('mousedown', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (video._ytAutoscrollPlayHandler) {
-          video.removeEventListener('play', video._ytAutoscrollPlayHandler);
-          video._ytAutoscrollPlayHandler = null;
-        }
-        this.clearUI();
-        this.state.isWaiting = false;
-        this.state.isPausedByUser = false;
-        video.currentTime = 0;
-        video._lastTime = 0;
-        video.play();
+      this.bindSafeClick(this.state.activeRing, () => {
+        this.cancelSkipAction(video, skipType);
       });
 
-      this.state.activeBtn.addEventListener('mousedown', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (video._ytAutoscrollPlayHandler) {
-          video.removeEventListener('play', video._ytAutoscrollPlayHandler);
-          video._ytAutoscrollPlayHandler = null;
+      this.bindSafeClick(this.state.activeBtn, () => {
+        if (skipType === 'long') {
+          this.cancelSkipAction(video, skipType);
+        } else {
+          if (video._ytAutoscrollPlayHandler) {
+            video.removeEventListener('play', video._ytAutoscrollPlayHandler);
+            video._ytAutoscrollPlayHandler = null;
+          }
+          this.clearUI();
+          this.state.isWaiting = false;
+          this.state.isPausedByUser = true;
+          
+          this.state.activeBtn = document.createElement('div');
+          this.state.activeBtn.className = 'yt-autoscroll-control-btn resume-mode';
+          this.state.activeBtn.innerHTML = this.getResumeHTML();
+          
+          this.bindSafeClick(this.state.activeBtn, () => {
+            this.state.activeBtn.remove();
+            this.state.activeBtn = null;
+            this.state.isPausedByUser = false;
+            this.executeSkip(video);
+          });
+          
+          playerContainer.appendChild(this.state.activeBtn);
+          video.play();
         }
-        this.clearUI();
-        this.state.isWaiting = false;
-        this.state.isPausedByUser = true;
-        
-        this.state.activeBtn = document.createElement('div');
-        this.state.activeBtn.className = 'yt-autoscroll-control-btn resume-mode';
-        this.state.activeBtn.innerHTML = this.getResumeHTML();
-        
-        this.state.activeBtn.onmousedown = (ev) => {
-          ev.preventDefault();
-          ev.stopPropagation();
-          this.state.activeBtn.remove();
-          this.state.activeBtn = null;
-          this.state.isPausedByUser = false;
-          this.state.isScrolling = true;
-          this.triggerScroll();
-          setTimeout(() => { this.state.isScrolling = false; }, 800);
-        };
-        
-        playerContainer.appendChild(this.state.activeBtn);
-        video.play();
       });
 
-      this.state.scrollTimeout = setTimeout(doSkip, this.config.delay);
+      this.state.scrollTimeout = setTimeout(() => this.executeSkip(video), this.config.delay);
 
     } else {
-      this.state.isScrolling = true;
-      this.triggerScroll();
-      setTimeout(() => { this.state.isScrolling = false; }, 800);
+      this.executeSkip(video);
     }
   }
 
@@ -419,7 +516,6 @@ class YTShortsAutoScroller {
       this.state.isScrolling = false;
       activeVideo._lastTime = activeVideo.currentTime;
       this.clearUI();
-      document.querySelectorAll('.yt-autoscroll-ring, .yt-autoscroll-control-btn').forEach(el => el.remove());
     }
 
     const currentTime = activeVideo.currentTime;
@@ -440,6 +536,22 @@ class YTShortsAutoScroller {
 
     activeVideo._lastTime = currentTime;
 
+    if (this.state.isForceSkipping) {
+      if (this.state.forceSkipVideoId !== videoId) {
+        this.state.isForceSkipping = false;
+        this.state.forceSkipVideoId = null;
+        this.state.isScrolling = false;
+      } else {
+        const now = Date.now();
+        if (now - this.state.lastScrollTime > 800) {
+          this.state.lastScrollTime = now;
+          if (!activeVideo.paused) activeVideo.pause();
+          this.triggerScroll();
+        }
+        return; 
+      }
+    }
+
     if (this.state.isPausedByUser) {
       const btn = document.querySelector('.yt-autoscroll-control-btn.resume-mode');
       if (btn) {
@@ -449,51 +561,31 @@ class YTShortsAutoScroller {
       return;
     }
 
-    // 1. ПРОВЕРКА ПРОПУСКА (Сначала проверяем, не слишком ли длинное видео)
     if (this.config.skipEnabled && !this.state.isWaiting) {
       if (duration && isFinite(duration) && duration > this.config.skipLimit) {
-        // Если видим это длинное видео впервые
         if (!this.state.skippedBuffer.includes(videoId)) {
           
-          // Сразу, 100% надёжно заносим в буфер (чтобы не пропустить повторно при возврате)
           this.state.skippedBuffer.push(videoId);
           if (this.state.skippedBuffer.length > 20) {
             this.state.skippedBuffer.shift();
           }
 
-          // Включаем "настойчивый режим" для этого конкретного видео
-          this.state.isForceSkipping = true;
-          this.state.forceSkipVideoId = videoId;
+          const reasonText = this.i18n ? this.i18n.skipReason.replace('{limit}', this.config.skipLimit) : `Longer than ${this.config.skipLimit} sec`;
+          
+          this.performScroll(activeVideo, {
+            skipType: 'long',
+            reasonText: reasonText
+          });
+
+          return; 
         }
       }
     }
 
-    // 2. ОТРАБОТКА НАСТОЙЧИВОГО РЕЖИМА ПРОПУСКА
-    // Если скрипт решил пропустить видео - он будет пытаться это сделать, пока не получится
-    if (this.state.isForceSkipping) {
-      if (this.state.forceSkipVideoId !== videoId) {
-        // Сработало! ID видео сменился, значит скролл прошел успешно. Выключаем режим.
-        this.state.isForceSkipping = false;
-        this.state.forceSkipVideoId = null;
-      } else {
-        // Видео всё еще старое. Значит нужно продолжать попытки скролла.
-        if (!this.state.isScrolling) {
-          if (!activeVideo.paused) {
-            activeVideo.pause();
-          }
-          this.performScroll(activeVideo, true);
-        }
-        // Обязательно выходим отсюда (return), чтобы не сработали обычные проверки ниже
-        return; 
-      }
-    }
-
-    // 3. ОБЫЧНАЯ ПАУЗА ПОЛЬЗОВАТЕЛЯ
     if (activeVideo.paused && !isEnded) return;
 
-    // 4. ОБЫЧНЫЙ АВТО-СКРОЛЛ ПО ОКОНЧАНИЮ ВИДЕО
     if (isEnded && !this.state.isScrolling && !this.state.isWaiting) {
-      this.performScroll(activeVideo, false);
+      this.performScroll(activeVideo, { skipType: 'end' });
       return;
     }
   }
