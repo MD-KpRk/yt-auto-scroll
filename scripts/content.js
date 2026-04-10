@@ -123,27 +123,31 @@ class YTShortsAutoScroller {
         transform: translate(-50%, -50%) rotate(-90deg);
         width: 90px;
         height: 90px;
-        z-index: 9999;
+        z-index: 2147483647 !important; /* Ультимативный слой поверх всего плеера */
+        pointer-events: all !important;
         filter: drop-shadow(0 4px 8px rgba(0,0,0,0.4));
         opacity: 1;
-        transition: transform 0.2s ease, opacity 0.2s ease;
-        pointer-events: auto;
+        transition: transform 0.2s cubic-bezier(0.25, 0.8, 0.25, 1), filter 0.2s ease, opacity 0.2s ease;
         cursor: pointer;
       }
       .yt-autoscroll-ring:hover {
-        transform: translate(-50%, -50%) rotate(-90deg) scale(1.05);
+        transform: translate(-50%, -50%) rotate(-90deg) scale(1.1);
+        filter: drop-shadow(0 6px 12px rgba(0,0,0,0.6));
+      }
+      .yt-autoscroll-ring:active {
+        transform: translate(-50%, -50%) rotate(-90deg) scale(0.95);
       }
       .yt-autoscroll-ring circle {
         fill: transparent;
         stroke-width: 5;
       }
       .yt-autoscroll-ring .shadow-bg {
-        fill: rgba(0, 0, 0, 0.45);
+        fill: rgba(0, 0, 0, 0.5);
         stroke: none;
         transition: fill 0.2s ease;
       }
       .yt-autoscroll-ring:hover .shadow-bg {
-        fill: rgba(0, 0, 0, 0.65);
+        fill: rgba(0, 0, 0, 0.8);
       }
       .yt-autoscroll-ring .bg {
         stroke: rgba(255, 255, 255, 0.15);
@@ -156,6 +160,17 @@ class YTShortsAutoScroller {
         transition-property: stroke-dashoffset;
         transition-timing-function: linear;
       }
+      
+      .yt-autoscroll-ring .ring-icon {
+        transition: stroke 0.2s ease, fill 0.2s ease;
+      }
+      .yt-autoscroll-ring:hover .ring-icon.stroke-icon {
+        stroke: #ff0033;
+      }
+      .yt-autoscroll-ring:hover .ring-icon.fill-icon {
+        fill: #ff0033;
+      }
+
       .yt-autoscroll-control-btn {
         position: absolute;
         top: calc(50% + 70px);
@@ -172,7 +187,7 @@ class YTShortsAutoScroller {
         border-radius: 36px;
         border: none;
         cursor: pointer;
-        z-index: 10000;
+        z-index: 2147483647 !important;
         box-shadow: 0 4px 12px rgba(0,0,0,0.3);
         transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
         pointer-events: auto;
@@ -208,7 +223,7 @@ class YTShortsAutoScroller {
         font-weight: 600;
         padding: 6px 14px;
         border-radius: 20px;
-        z-index: 10000;
+        z-index: 2147483647 !important;
         white-space: nowrap;
         pointer-events: none;
         backdrop-filter: blur(4px);
@@ -277,20 +292,16 @@ class YTShortsAutoScroller {
   }
 
   bindSafeClick(element, handler) {
-    let lastTime = 0;
-    const handleEvent = (e) => {
-      e.preventDefault();
+    element.addEventListener('mousedown', (e) => {
       e.stopPropagation();
-      e.stopImmediatePropagation();
-      const now = Date.now();
-      if (now - lastTime > 300) {
-        lastTime = now;
-        handler(e);
-      }
-    };
-    element.addEventListener('mousedown', handleEvent);
-    element.addEventListener('click', handleEvent);
-    element.addEventListener('touchstart', handleEvent, { passive: false });
+    });
+    element.addEventListener('click', (e) => {
+      e.stopPropagation();
+      handler(e);
+    });
+    element.addEventListener('touchstart', (e) => {
+      e.stopPropagation();
+    }, { passive: true });
   }
 
   executeSkip(video) {
@@ -343,8 +354,12 @@ class YTShortsAutoScroller {
       setTimeout(forcePause, 50);
       setTimeout(forcePause, 150);
 
-      const playerContainer = video.closest('.html5-video-player') || video.parentElement;
-      playerContainer.querySelectorAll('.yt-autoscroll-ring, .yt-autoscroll-control-btn, .yt-autoscroll-reason').forEach(el => el.remove());
+      // Чистим старый UI
+      const mainContainer = video.closest(SELECTORS.container) || document;
+      mainContainer.querySelectorAll('.yt-autoscroll-ring, .yt-autoscroll-control-btn, .yt-autoscroll-reason').forEach(el => el.remove());
+
+      // Инжектим прямо в плеер, так как он идеально сжимается при открытых комментариях
+      let uiTarget = video.closest('.html5-video-player') || video.parentElement;
 
       this.state.activeRing = this.createSvg('svg', { class: 'yt-autoscroll-ring', viewBox: '0 0 100 100' });
       const shadowBg = this.createSvg('circle', { class: 'shadow-bg', cx: '50', cy: '50', r: '43' });
@@ -355,20 +370,21 @@ class YTShortsAutoScroller {
         transform: 'rotate(90, 50, 50) translate(34, 34) scale(1.33)'
       });
 
-      // Меняем иконку внутри круга в зависимости от контекста
       if (skipType === 'long') {
+        iconGroup.setAttribute('class', 'ring-icon fill-icon');
         iconGroup.setAttribute('fill', 'rgba(255, 255, 255, 0.95)');
         iconGroup.setAttribute('stroke', 'none');
-        // Треугольник Play
+        
         const path1 = this.createSvg('path', { d: 'M8 5v14l11-7z' });
         iconGroup.appendChild(path1);
       } else {
+        iconGroup.setAttribute('class', 'ring-icon stroke-icon');
         iconGroup.setAttribute('fill', 'none');
         iconGroup.setAttribute('stroke', 'rgba(255, 255, 255, 0.95)');
         iconGroup.setAttribute('stroke-width', '2');
         iconGroup.setAttribute('stroke-linecap', 'round');
         iconGroup.setAttribute('stroke-linejoin', 'round');
-        // Стандартная стрелочка авто-скролла
+        
         const path1 = this.createSvg('path', { d: 'M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8' });
         const path2 = this.createSvg('path', { d: 'M21 3v5h-5' });
         iconGroup.appendChild(path1);
@@ -379,7 +395,7 @@ class YTShortsAutoScroller {
       this.state.activeRing.appendChild(bg);
       this.state.activeRing.appendChild(progress);
       this.state.activeRing.appendChild(iconGroup);
-      playerContainer.appendChild(this.state.activeRing);
+      uiTarget.appendChild(this.state.activeRing);
 
       this.state.activeBtn = document.createElement('div');
       
@@ -391,13 +407,13 @@ class YTShortsAutoScroller {
         this.state.activeBtn.innerHTML = this.getCancelHTML();
       }
       
-      playerContainer.appendChild(this.state.activeBtn);
+      uiTarget.appendChild(this.state.activeBtn);
 
       if (reasonText) {
         this.state.activeReason = document.createElement('div');
         this.state.activeReason.className = 'yt-autoscroll-reason';
         this.state.activeReason.textContent = reasonText;
-        playerContainer.appendChild(this.state.activeReason);
+        uiTarget.appendChild(this.state.activeReason);
       }
 
       progress.style.transitionDuration = `${this.config.delay}ms`;
@@ -445,7 +461,7 @@ class YTShortsAutoScroller {
             this.executeSkip(video);
           });
           
-          playerContainer.appendChild(this.state.activeBtn);
+          uiTarget.appendChild(this.state.activeBtn);
           video.play();
         }
       });
