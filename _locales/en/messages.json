@@ -2,16 +2,15 @@
   "extName": { "message": "Youtube Shorts AutoScroll" },
   "extDesc": { "message": "Premium Auto-Scroller for YouTube Shorts. Scroll on video end, skip long videos, and customize delays." },
   "autoScroll": { "message": "Auto-Scroll" },
-  "scrollDesc": { "message": "Enable Auto-Scroll feature" },
+  "scrollDesc": { "message": "Scroll on video end" },
   "skipLong": { "message": "Duration Limit" },
-  "skipDesc": { "message": "Skip long shorts immediately" },
+  "skipDesc": { "message": "Skip long immediately" },
   "delay": { "message": "Scroll Delay" },
-  "skipTimeLabel": { "message": "Skip if video longer than" },
+  "skipTimeLabel": { "message": "Skip if longer than" },
   "statusReady": { "message": "Ready to work" },
   "statusSaved": { "message": "Saved" },
   "sec": { "message": "sec" },
-  "cancelScroll": { "message": "Cancel Auto-Scroll" },
-  "resumeScroll": { "message": "Resume Auto-Scroll" },
   "skipReason": { "message": "Longer than {limit} sec" },
-  "watchVideo": { "message": "Continue watching" }
+  "watchVideo": { "message": "Continue watching" },
+  "watchAgain": { "message": "Watch again" }
 }

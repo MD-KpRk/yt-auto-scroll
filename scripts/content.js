@@ -19,7 +19,6 @@ class YTShortsAutoScroller {
     this.state = {
       isScrolling: false,
       isWaiting: false,
-      isPausedByUser: false,
       manualScrollBlock: false,
       currentVideoId: "",
       skippedBuffer:[],
@@ -40,7 +39,6 @@ class YTShortsAutoScroller {
 
   init() {
     this.loadStorage();
-    this.injectStyles();
     this.attachListeners();
     setInterval(this.checkLoop.bind(this), 100);
   }
@@ -70,17 +68,15 @@ class YTShortsAutoScroller {
       const res = await fetch(url);
       const json = await res.json();
       this.i18n = {
-        cancelScroll: json.cancelScroll?.message || 'Cancel Auto-Scroll',
-        resumeScroll: json.resumeScroll?.message || 'Resume Auto-Scroll',
         skipReason: json.skipReason?.message || 'Longer than {limit} sec',
-        watchVideo: json.watchVideo?.message || 'Continue watching'
+        watchVideo: json.watchVideo?.message || 'Continue watching',
+        watchAgain: json.watchAgain?.message || 'Watch again'
       };
     } catch (e) {
       this.i18n = {
-        cancelScroll: chrome.i18n.getMessage("cancelScroll") || 'Cancel Auto-Scroll',
-        resumeScroll: chrome.i18n.getMessage("resumeScroll") || 'Resume Auto-Scroll',
         skipReason: chrome.i18n.getMessage("skipReason") || 'Longer than {limit} sec',
-        watchVideo: chrome.i18n.getMessage("watchVideo") || 'Continue watching'
+        watchVideo: chrome.i18n.getMessage("watchVideo") || 'Continue watching',
+        watchAgain: chrome.i18n.getMessage("watchAgain") || 'Watch again'
       };
     }
   }
@@ -111,152 +107,11 @@ class YTShortsAutoScroller {
     }));
   }
 
-  injectStyles() {
-    if (document.getElementById('yt-autoscroll-styles')) return;
-    const style = document.createElement('style');
-    style.id = 'yt-autoscroll-styles';
-    style.textContent = `
-      .yt-autoscroll-wrapper {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        z-index: 2147483647 !important;
-        pointer-events: none !important; /* Пропускаем клики мимо наших кнопок */
-        overflow: visible;
-      }
-      .yt-autoscroll-ring {
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%) rotate(-90deg);
-        width: 90px;
-        height: 90px;
-        pointer-events: auto !important;
-        opacity: 1;
-        transition: transform 0.2s cubic-bezier(0.25, 0.8, 0.25, 1), opacity 0.2s ease;
-        cursor: pointer;
-        will-change: transform;
-      }
-      .yt-autoscroll-ring:hover {
-        transform: translate(-50%, -50%) rotate(-90deg) scale(1.1);
-      }
-      .yt-autoscroll-ring:active {
-        transform: translate(-50%, -50%) rotate(-90deg) scale(0.95);
-      }
-      .yt-autoscroll-ring circle {
-        fill: transparent;
-        stroke-width: 5;
-      }
-      .yt-autoscroll-ring .shadow-bg {
-        fill: rgba(0, 0, 0, 0.6);
-        stroke: none;
-        transition: fill 0.2s ease;
-      }
-      .yt-autoscroll-ring:hover .shadow-bg {
-        fill: rgba(0, 0, 0, 0.9);
-      }
-      .yt-autoscroll-ring .bg {
-        stroke: rgba(255, 255, 255, 0.15);
-      }
-      .yt-autoscroll-ring .progress {
-        stroke: #ff0000;
-        stroke-dasharray: 289;
-        stroke-dashoffset: 289;
-        stroke-linecap: round;
-        transition-property: stroke-dashoffset;
-        transition-timing-function: linear;
-      }
-      
-      .yt-autoscroll-ring .ring-icon {
-        transition: stroke 0.2s ease, fill 0.2s ease;
-      }
-      .yt-autoscroll-ring:hover .ring-icon.stroke-icon {
-        stroke: #ff0033;
-      }
-      .yt-autoscroll-ring:hover .ring-icon.fill-icon {
-        fill: #ff0033;
-      }
-
-      .yt-autoscroll-control-btn {
-        position: absolute;
-        top: calc(50% + 70px);
-        left: 50%;
-        transform: translateX(-50%);
-        background: rgba(0, 0, 0, 0.85); /* Заменили блюр на сплошную прозрачность */
-        color: #fff;
-        font-family: "Roboto", "Arial", sans-serif;
-        font-size: 14px;
-        font-weight: 500;
-        padding: 10px 20px 10px 16px;
-        border-radius: 36px;
-        border: none;
-        cursor: pointer;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.5); /* Стандартная тень не вызывает багов */
-        transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
-        pointer-events: auto !important;
-        white-space: nowrap;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 6px;
-        will-change: transform;
-      }
-      .yt-autoscroll-control-btn:hover {
-        background: rgba(40, 40, 40, 0.95);
-        transform: translateX(-50%) scale(1.03);
-      }
-      .yt-autoscroll-control-btn svg {
-        margin-top: -1px;
-      }
-      .yt-autoscroll-control-btn.resume-mode {
-        background: rgba(0, 0, 0, 0.9);
-      }
-      .yt-autoscroll-control-btn.resume-mode:hover {
-        background: rgba(255, 0, 0, 0.9);
-        box-shadow: 0 4px 16px rgba(255, 0, 0, 0.4);
-      }
-      .yt-autoscroll-reason {
-        position: absolute;
-        top: calc(50% - 85px);
-        left: 50%;
-        transform: translateX(-50%);
-        background: rgba(255, 0, 51, 0.95); /* Убрали блюр */
-        color: #fff;
-        font-family: "Roboto", "Arial", sans-serif;
-        font-size: 13px;
-        font-weight: 600;
-        padding: 6px 14px;
-        border-radius: 20px;
-        white-space: nowrap;
-        pointer-events: none;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.4);
-        animation: yt-reason-fade 0.3s ease-out;
-      }
-      @keyframes yt-reason-fade {
-        from { opacity: 0; transform: translate(-50%, 10px); }
-        to { opacity: 1; transform: translate(-50%, 0); }
-      }
-    `;
-    document.head.appendChild(style);
-  }
-
-  getCancelHTML() {
-    const text = this.i18n ? this.i18n.cancelScroll : 'Cancel Auto-Scroll';
+  getWatchAgainHTML() {
+    const text = this.i18n ? this.i18n.watchAgain : 'Watch again';
     return `
       <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
-        <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
-      </svg>
-      <span>${text}</span>
-    `;
-  }
-
-  getResumeHTML() {
-    const text = this.i18n ? this.i18n.resumeScroll : 'Resume Auto-Scroll';
-    return `
-      <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
-        <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/>
+        <path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/>
       </svg>
       <span>${text}</span>
     `;
@@ -280,7 +135,6 @@ class YTShortsAutoScroller {
 
   clearUI() {
     clearTimeout(this.state.scrollTimeout);
-    // Полностью удаляем обёртку со всеми кнопками внутри
     document.querySelectorAll('.yt-autoscroll-wrapper').forEach(el => el.remove());
     this.state.activeRing = null;
     this.state.activeBtn = null;
@@ -324,7 +178,6 @@ class YTShortsAutoScroller {
     }
     this.clearUI();
     this.state.isWaiting = false;
-    this.state.isPausedByUser = false;
     
     if (video) {
       if (skipType === 'end') {
@@ -338,7 +191,7 @@ class YTShortsAutoScroller {
   performScroll(video, options = {}) {
     const { forceInstant = false, skipType = 'end', reasonText = null } = options;
 
-    if (this.state.isScrolling || this.state.isWaiting || this.state.isPausedByUser) return;
+    if (this.state.isScrolling || this.state.isWaiting) return;
 
     if (this.config.delay > 0 && !forceInstant) {
       this.state.isWaiting = true;
@@ -352,10 +205,11 @@ class YTShortsAutoScroller {
       setTimeout(forcePause, 50);
       setTimeout(forcePause, 150);
 
-      // Удаляем старые интерфейсы, чтобы не плодить дубли
-      document.querySelectorAll('.yt-autoscroll-wrapper').forEach(el => el.remove());
+      const mainContainer = video.closest(SELECTORS.container);
+      if (mainContainer) {
+        mainContainer.querySelectorAll('.yt-autoscroll-wrapper').forEach(el => el.remove());
+      }
 
-      // Инжектим изолированный контейнер (wrapper) прямо в плеер
       let uiTarget = video.closest('.html5-video-player') || video.parentElement;
 
       const wrapper = document.createElement('div');
@@ -396,7 +250,6 @@ class YTShortsAutoScroller {
       this.state.activeRing.appendChild(bg);
       this.state.activeRing.appendChild(progress);
       this.state.activeRing.appendChild(iconGroup);
-      
       wrapper.appendChild(this.state.activeRing);
 
       this.state.activeBtn = document.createElement('div');
@@ -406,7 +259,7 @@ class YTShortsAutoScroller {
         this.state.activeBtn.innerHTML = this.getWatchHTML();
       } else {
         this.state.activeBtn.className = 'yt-autoscroll-control-btn';
-        this.state.activeBtn.innerHTML = this.getCancelHTML();
+        this.state.activeBtn.innerHTML = this.getWatchAgainHTML();
       }
       
       wrapper.appendChild(this.state.activeBtn);
@@ -441,36 +294,7 @@ class YTShortsAutoScroller {
       });
 
       this.bindSafeClick(this.state.activeBtn, () => {
-        if (skipType === 'long') {
-          this.cancelSkipAction(video, skipType);
-        } else {
-          if (video._ytAutoscrollPlayHandler) {
-            video.removeEventListener('play', video._ytAutoscrollPlayHandler);
-            video._ytAutoscrollPlayHandler = null;
-          }
-          this.clearUI();
-          this.state.isWaiting = false;
-          this.state.isPausedByUser = true;
-          
-          // Создаем новую оболочку для кнопки Resume
-          const newWrapper = document.createElement('div');
-          newWrapper.className = 'yt-autoscroll-wrapper';
-          uiTarget.appendChild(newWrapper);
-
-          this.state.activeBtn = document.createElement('div');
-          this.state.activeBtn.className = 'yt-autoscroll-control-btn resume-mode';
-          this.state.activeBtn.innerHTML = this.getResumeHTML();
-          
-          this.bindSafeClick(this.state.activeBtn, () => {
-            newWrapper.remove();
-            this.state.activeBtn = null;
-            this.state.isPausedByUser = false;
-            this.executeSkip(video);
-          });
-          
-          newWrapper.appendChild(this.state.activeBtn);
-          video.play();
-        }
+        this.cancelSkipAction(video, skipType);
       });
 
       this.state.scrollTimeout = setTimeout(() => this.executeSkip(video), this.config.delay);
@@ -487,7 +311,6 @@ class YTShortsAutoScroller {
         this.state.isWaiting = false;
         this.state.isForceSkipping = false;
         this.state.isScrolling = false;
-        this.state.isPausedByUser = false;
       }
       return;
     }
@@ -543,7 +366,6 @@ class YTShortsAutoScroller {
 
     if (this.state.currentVideoId !== videoId) {
       this.state.currentVideoId = videoId;
-      this.state.isPausedByUser = false;
       this.state.isWaiting = false;
       this.state.isScrolling = false;
       activeVideo._lastTime = activeVideo.currentTime;
@@ -582,15 +404,6 @@ class YTShortsAutoScroller {
         }
         return; 
       }
-    }
-
-    if (this.state.isPausedByUser) {
-      const btn = document.querySelector('.yt-autoscroll-control-btn.resume-mode');
-      if (btn) {
-        btn.style.opacity = activeVideo.paused ? '1' : '0';
-        btn.style.pointerEvents = activeVideo.paused ? 'auto' : 'none';
-      }
-      return;
     }
 
     if (this.config.skipEnabled && !this.state.isWaiting) {

@@ -1,34 +1,30 @@
 {
   "manifest_version": 3,
   "name": "__MSG_extName__",
-  "version": "1.2.4",
+  "version": "1.2.5",
   "description": "__MSG_extDesc__",
   "default_locale": "en",
   "permissions": ["storage", "tabs"],
   "host_permissions": ["*://www.youtube.com/*"],
-  
   "background": {
     "service_worker": "scripts/background.js"
   },
-  
   "action": {
     "default_popup": "popup/popup.html",        
     "default_icon": "assets/icons/YT-icon-deactivated.png",
     "default_title": "__MSG_extName__"
   },
-  
   "icons": {
     "128": "assets/icons/YT-icon-store.png"
   },
-  
   "content_scripts": [
     {
       "matches":["*://www.youtube.com/*"],
       "js": ["scripts/content.js"],
+      "css": ["scripts/content.css"],
       "run_at": "document_end"
     }
   ],
-  
   "web_accessible_resources": [
     {
       "resources": ["_locales/*/messages.json"],

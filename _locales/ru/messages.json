@@ -2,16 +2,15 @@
   "extName": { "message": "YouTube Shorts: Авто-скролл" },
   "extDesc": { "message": "Автоматическое перелистывание видео YouTube Shorts. Настраиваемая задержка, пропуск длинных видео и удобное управление." },
   "autoScroll": { "message": "Авто-скролл" },
-  "scrollDesc": { "message": "Включить авто-скролл" },
+  "scrollDesc": { "message": "Листать после окончания" },
   "skipLong": { "message": "Лимит длительности" },
-  "skipDesc": { "message": "Сразу пропускать длинные шортсы" },
+  "skipDesc": { "message": "Сразу пропускать длинные" },
   "delay": { "message": "Задержка скролла" },
-  "skipTimeLabel": { "message": "Пропускать если длиннее" },
+  "skipTimeLabel": { "message": "Пропускать после" },
   "statusReady": { "message": "Готов к работе" },
   "statusSaved": { "message": "Сохранено" },
   "sec": { "message": "сек" },
-  "cancelScroll": { "message": "Отменить авто-скролл" },
-  "resumeScroll": { "message": "Продолжить авто-скролл" },
   "skipReason": { "message": "Длиннее {limit} сек" },
-  "watchVideo": { "message": "Продолжить просмотр" }
+  "watchVideo": { "message": "Продолжить просмотр" },
+  "watchAgain": { "message": "Смотреть снова" }
 }
