@@ -82,23 +82,29 @@ class YTShortsAutoScroller {
   }
 
   blockAutoScroll() {
+    if (this.state.isWaiting || this.state.isForceSkipping) {
+      this.stopEverything();
+    }
     this.state.manualScrollBlock = true;
     clearTimeout(this.state.manualScrollTimeout);
     this.state.manualScrollTimeout = setTimeout(() => {
       this.state.manualScrollBlock = false;
-    }, 800);
+    }, 2000);
+    //console.log('YT Shorts Auto-Scroller: Manual scroll detected, blocking auto-scroll for 2 seconds');
   }
 
   attachListeners() {
-    const handler = this.blockAutoScroll.bind(this);
+    const handler = (e) => {
+      if (e && !e.isTrusted) return; 
+      this.blockAutoScroll();
+    };
+
     window.addEventListener('wheel', handler, { passive: true });
     window.addEventListener('touchstart', handler, { passive: true });
     window.addEventListener('touchmove', handler, { passive: true });
     window.addEventListener('keydown', (e) => {
-      if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown'].includes(e.key)) {
-        this.blockAutoScroll();
-      }
-    }, { passive: true });
+      if (!e.isTrusted) return; 
+      if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown'].includes(e.key)) { handler(e); }}, { passive: true });
   }
 
   triggerScroll() {
