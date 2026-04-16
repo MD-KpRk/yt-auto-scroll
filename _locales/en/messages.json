@@ -12,5 +12,6 @@
   "sec": { "message": "sec" },
   "skipReason": { "message": "Longer than {limit} sec" },
   "watchVideo": { "message": "Continue watching" },
-  "watchAgain": { "message": "Watch again" }
+  "watchAgain": { "message": "Watch again" },
+  "skipAdReason": { "message": "Advertisement" }
 }

@@ -12,5 +12,6 @@
   "sec": { "message": "сек" },
   "skipReason": { "message": "Длиннее {limit} сек" },
   "watchVideo": { "message": "Продолжить просмотр" },
-  "watchAgain": { "message": "Смотреть снова" }
+  "watchAgain": { "message": "Смотреть снова" },
+  "skipAdReason": { "message": "Реклама" }
 }
