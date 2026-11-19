@@ -40,6 +40,7 @@ class YTShortsAutoScroller {
     document.addEventListener('visibilitychange', () => this.refresh());
     const manual = event => {
       if (!event.isTrusted || event.target.closest?.('.yt-autoscroll-wrapper')) return;
+      if (this.current?.seekDragging) return;
       if (event.type === 'keydown' && !['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown'].includes(event.key)) return;
       if (AutoScrollSettings.isShorts(location.href)) this.block();
     };
@@ -54,14 +55,18 @@ class YTShortsAutoScroller {
     // Seeking is explicit user intent, including clicking a progress bar.
     const seekIntent = event => {
       if (!event.isTrusted || event.target.closest?.('.yt-autoscroll-wrapper')) return;
+      if (event.target.closest?.('input, textarea, [contenteditable="true"]')) return;
       if (event.type === 'keydown' && !['ArrowLeft', 'ArrowRight', 'Home', 'End', 'j', 'l', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'].includes(event.key)) return;
-      if (this.current) {
-        this.current.ignoreEndUntil = Date.now() + 1000;
-        this.current.userSeekUntil = Date.now() + 1500;
-      }
+      if (event.type === 'pointerdown' && !event.target.closest?.('.ytp-progress-bar-container, .ytp-progress-bar, .ytp-scrubber-container, [role="slider"]')) return;
+      this.beginSeek(event.type === 'pointerdown');
     };
-    window.addEventListener('pointerdown', seekIntent, { passive: true });
-    window.addEventListener('keydown', seekIntent, { passive: true });
+    window.addEventListener('pointerdown', seekIntent, { passive: true, capture: true });
+    window.addEventListener('keydown', seekIntent, { passive: true, capture: true });
+    for (const event of ['pointerup', 'pointercancel', 'blur']) {
+      window.addEventListener(event, () => {
+        if (this.current?.seekDragging) this.finishSeek();
+      }, { capture: true });
+    }
     // One low-frequency watchdog handles DOM replacement and missed SPA events.
     this.watchdog = setInterval(() => this.refresh(), 1000);
     window.addEventListener('pagehide', () => {
@@ -133,6 +138,34 @@ class YTShortsAutoScroller {
     this.current = null;
   }
 
+  beginSeek(dragging = false) {
+    const current = this.current;
+    if (!current) return;
+    current.seekDragging = current.seekDragging || dragging;
+    current.userSeekUntil = Date.now() + 1500;
+    current.seekBlockUntil = Date.now() + 500;
+    current.ignoreEndUntil = current.seekBlockUntil;
+    current.pendingEnd = false;
+    current.lastTime = current.video.currentTime;
+    // Scrubbing expresses an intent to watch, not to skip this ad/long video again.
+    this.remember(this.dismissed, `${current.id}:long`);
+    this.remember(this.dismissed, `${current.id}:ad`);
+    this.autoNavigation = null;
+    // Leave time and paused/playing state to the player during a seek.
+    this.stopOperation();
+    this.debugLog('Seeking: cancelled automatic transition', { videoId: current.id });
+  }
+
+  finishSeek() {
+    if (!this.current) return;
+    this.current.seekDragging = false;
+    this.current.lastTime = this.current.video.currentTime;
+    this.current.userSeekUntil = Date.now() + 1500;
+    this.current.seekBlockUntil = Date.now() + 500;
+    this.current.ignoreEndUntil = this.current.seekBlockUntil;
+    this.current.pendingEnd = false;
+  }
+
   attachVideo(video, id) {
     if (video || this.current) this.debugLog('Active video changed', { from: this.current?.id, to: id });
     if (video && id && id !== this.lastVisitedId) {
@@ -150,16 +183,21 @@ class YTShortsAutoScroller {
     const observer = new IntersectionObserver(() => this.refresh(), { threshold: [0, 0.25, 0.5, 0.75, 1] });
     this.current = { video, id, source: video.currentSrc, path: location.pathname, events,
       observer, originalLoop: video.loop, lastTime: video.currentTime, changedAt: Date.now(), ignoreEndUntil: 0,
-      userSeekUntil: 0, pendingEnd: false };
+      userSeekUntil: 0, pendingEnd: false, seekDragging: false, seekBlockUntil: 0 };
     observer.observe(video);
     const options = { signal: events.signal };
     video.addEventListener('ended', () => this.evaluate(true), options);
-    for (const event of ['timeupdate', 'loadedmetadata', 'durationchange', 'play', 'seeked']) {
+    for (const event of ['timeupdate', 'loadedmetadata', 'durationchange', 'play']) {
       video.addEventListener(event, () => this.evaluate(), options);
     }
+    video.addEventListener('seeked', () => {
+      if (!this.current || this.current.video !== video) return;
+      if (!this.current.pendingEnd && !this.current.seekDragging) this.finishSeek();
+      this.evaluate();
+    }, options);
     video.addEventListener('seeking', () => {
       if (!this.current || this.current.video !== video) return;
-      const automaticWrap = Date.now() >= this.current.userSeekUntil &&
+      const automaticWrap = !this.current.seekDragging && Date.now() >= this.current.userSeekUntil &&
         this.current.lastTime > Math.max(video.duration - 1.5, video.duration * 0.8) &&
         video.currentTime < Math.min(1.5, video.duration * 0.2);
       if (automaticWrap) {
@@ -167,10 +205,7 @@ class YTShortsAutoScroller {
         this.debugLog('Automatic replay detected', { videoId: this.current.id });
         return;
       }
-      this.current.lastTime = video.currentTime;
-      this.current.pendingEnd = false;
-      this.current.ignoreEndUntil = Date.now() + 500;
-      this.stopOperation(true);
+      this.beginSeek();
     }, options);
     // Native ended is reliable when looping is disabled; restore the page's value on detach.
     video.loop = this.config.enabled && id !== this.returnedVideoId ? false : this.current.originalLoop;
@@ -212,6 +247,7 @@ class YTShortsAutoScroller {
       : !AutoScrollSettings.anyEnabled(this.config) ? 'disabled'
       : document.hidden ? 'hidden' : !this.current ? 'no-video'
       : this.current.id === this.returnedVideoId ? 'manual-return'
+      : this.current.seekDragging || this.current.video.seeking || Date.now() < this.current.seekBlockUntil ? 'seeking'
       : Date.now() < this.blockedUntil ? 'manual-navigation'
       : this.current.video.readyState < 2 ? 'loading-video'
       : this.failed.has(this.current.id) ? 'retries-exhausted'
@@ -230,6 +266,7 @@ class YTShortsAutoScroller {
     const video = current.video;
     const previousTime = current.lastTime;
     current.lastTime = video.currentTime;
+    if (current.seekDragging || Date.now() < current.seekBlockUntil) return;
     if (current.id === this.returnedVideoId) { this.mode = 'blocked'; return; }
     if (Date.now() < this.blockedUntil) { this.mode = 'blocked'; return; }
     if (this.mode === 'blocked') this.mode = 'idle';
@@ -257,11 +294,13 @@ class YTShortsAutoScroller {
 
   valid(operation) {
     return this.operation === operation && this.running() && Date.now() >= this.blockedUntil &&
+      !operation.video.seeking && !this.current?.seekDragging && Date.now() >= (this.current?.seekBlockUntil || 0) &&
       this.allowed(operation.type, operation.video) && this.sameVideo(operation);
   }
 
   start(video, type, wasPausedByUs = false) {
     if (this.operation || !this.current || !this.running() || Date.now() < this.blockedUntil ||
+      video.seeking || this.current.seekDragging || Date.now() < this.current.seekBlockUntil ||
       !this.sameVideo(this.current) || !this.allowed(type, video)) return;
     const operation = { ...this.current, type, events: new AbortController(), timer: null, ui: null,
       attempts: 0, pausedByUs: wasPausedByUs || !video.paused };
@@ -271,7 +310,10 @@ class YTShortsAutoScroller {
     video.pause();
     if (!this.config.delay) { this.execute(operation); return; }
     operation.ui = new AutoScrollOverlay(video, type, this.i18n, this.config.skipLimit, this.config.delay, () => this.cancel(operation));
-    video.addEventListener('play', () => this.cancel(operation), { signal: operation.events.signal });
+    video.addEventListener('play', () => {
+      if (video.seeking || this.current?.seekDragging || Date.now() < (this.current?.userSeekUntil || 0)) this.beginSeek();
+      else this.cancel(operation);
+    }, { signal: operation.events.signal });
     operation.timer = setTimeout(() => this.execute(operation), this.config.delay);
   }
 

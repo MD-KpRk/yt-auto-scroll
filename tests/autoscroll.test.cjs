@@ -307,3 +307,50 @@ test('automatic navigation to a previously visited video does not set manual-ret
   h.setActive(h.video); h.scroller.refresh();
   assert.equal(h.scroller.returnedVideoId, null);
 });
+
+
+test('scrubbing during countdown cancels stale timer without changing position or pause', () => {
+  const h = setup(); h.scroller.start(h.video, 'end');
+  const stale = [...h.timers.values()][0].fn;
+  h.scroller.beginSeek(true);
+  h.video.currentTime = 45; h.video.seeking = true;
+  h.video.dispatchEvent(new Event('seeking'));
+  stale(); h.tick(5000);
+  assert.equal(h.video.currentTime, 45); assert.equal(h.video.paused, true);
+  assert.equal(h.advances, 0); assert.equal(h.scroller.operation, null);
+});
+
+test('long scrub across loop boundary is never treated as automatic replay', () => {
+  const h = setup(); h.video.currentTime = 99; h.scroller.evaluate();
+  h.scroller.beginSeek(true); h.tick(5000);
+  h.video.currentTime = 0; h.video.seeking = true; h.video.dispatchEvent(new Event('seeking'));
+  h.video.seeking = false; h.video.dispatchEvent(new Event('seeked'));
+  assert.equal(h.scroller.current.pendingEnd, false);
+  h.tick(5000); h.scroller.refresh(); assert.equal(h.advances, 0);
+  h.scroller.finishSeek(); h.tick(600);
+  h.video.currentTime = 100; h.video.ended = true; h.video.paused = true;
+  h.video.dispatchEvent(new Event('ended')); h.tick(1000);
+  assert.equal(h.advances, 1);
+});
+
+test('seeking a long video does not immediately schedule another duration skip', () => {
+  const h = setup({ skipEnabled: true }); h.scroller.beginSeek();
+  h.video.currentTime = 30; h.video.dispatchEvent(new Event('seeking'));
+  h.video.dispatchEvent(new Event('seeked')); h.video.play();
+  h.tick(5000); h.scroller.refresh();
+  assert.equal(h.scroller.operation, null); assert.equal(h.advances, 0);
+  assert.equal(h.video.currentTime, 30); assert.equal(h.video.paused, false);
+});
+
+test('play before seeking callback does not rewind to zero', () => {
+  const h = setup(); h.scroller.start(h.video, 'end');
+  h.video.currentTime = 42; h.video.seeking = true; h.video.play();
+  assert.equal(h.video.currentTime, 42); assert.equal(h.scroller.operation, null);
+  assert.equal(h.video.paused, false);
+});
+
+test('a timer cannot advance while seeking even before seeking callback', () => {
+  const h = setup(); h.scroller.start(h.video, 'end');
+  h.video.seeking = true; h.tick(1000);
+  assert.equal(h.advances, 0); assert.equal(h.scroller.operation, null);
+});
