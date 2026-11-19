@@ -1,122 +1,132 @@
-let currentLang = 'en';
-let translations = {};
+document.addEventListener('DOMContentLoaded', async () => {
+  const byId = id => document.getElementById(id);
+  const controls = {
+    enabled: byId('toggle-scroll'), skipEnabled: byId('toggle-skip'), skipAds: byId('toggle-ads'),
+    delay: byId('delay-slider'), skipLimit: byId('skip-slider')
+  };
+  const status = byId('status');
+  const languageButtons = { en: byId('btn-en'), ru: byId('btn-ru') };
+  let config = AutoScrollSettings.normalize();
+  let dictionary = {};
+  let languageRequest = 0;
+  let statusTimer;
+  let statusKey = 'statusReady';
+  let writes = Promise.resolve();
+  let connectionKey = 'connectionChecking';
+  let connectionDetails = '';
+  let connectionReason = '';
 
-document.addEventListener('DOMContentLoaded', () => {
-  const toggleScroll = document.getElementById('toggle-scroll');
-  const delaySlider = document.getElementById('delay-slider');
-  const delayDisplay = document.getElementById('delay-display');
-  
-  const toggleSkip = document.getElementById('toggle-skip');
-  const skipSlider = document.getElementById('skip-slider');
-  const skipDisplay = document.getElementById('skip-display');
-  const skipContainer = document.getElementById('skip-settings-container');
-
-  const status = document.getElementById('status');
-  const btnRu = document.getElementById('btn-ru');
-  const btnEn = document.getElementById('btn-en');
-
-  function updateSkipVisibility() {
-    if (toggleSkip.checked) {
-      skipContainer.classList.remove('hidden');
-    } else {
-      skipContainer.classList.add('hidden');
-    }
+  function renderConnection() {
+    const reason = connectionReason ? (dictionary[connectionReason] || chrome.i18n.getMessage(connectionReason)) : '';
+    byId('connection-status').textContent = (dictionary[connectionKey] || chrome.i18n.getMessage(connectionKey)) + connectionDetails + (reason ? ` — ${reason}` : '');
   }
 
-  // Динамически запрашиваем файл локализации
-  async function fetchTranslations(lang) {
+  async function checkConnection() {
     try {
-      const url = chrome.runtime.getURL(`_locales/${lang}/messages.json`);
-      const res = await fetch(url);
-      const json = await res.json();
-      const dict = {};
-      for (const key in json) {
-        dict[key] = json[key].message;
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!AutoScrollSettings.isShorts(tab?.url)) connectionKey = 'connectionNotShorts';
+      else {
+        const health = await chrome.tabs.sendMessage(tab.id, { type: 'YT_AUTOSCROLL_STATUS' });
+        if (!health?.version) throw new Error('No content script response');
+        connectionKey = 'connectionReady';
+        connectionDetails = ` (${health.version})`;
+        connectionReason = {
+          'no-video': 'connectionNoVideo', 'disabled': 'connectionDisabled',
+          'paused': 'connectionPaused', 'retries-exhausted': 'connectionFailed',
+          'manual-return': 'connectionManualReturn'
+        }[health.reason] || '';
       }
-      return dict;
-    } catch (e) {
-      console.error('Failed to load translations:', e);
-      return null;
-    }
+    } catch { connectionKey = 'connectionMissing'; }
+    renderConnection();
   }
 
-  async function applyLanguage(lang) {
-    currentLang = lang;
-    
-    if (lang === 'ru') {
-      btnRu.classList.add('active');
-      btnEn.classList.remove('active');
-    } else {
-      btnEn.classList.add('active');
-      btnRu.classList.remove('active');
-    }
-
-    const dict = await fetchTranslations(lang);
-    if (dict) {
-      translations = dict;
-      document.querySelectorAll('[data-lang-key]').forEach(el => {
-        const key = el.getAttribute('data-lang-key');
-        if (translations[key]) {
-          el.textContent = translations[key];
-        }
-      });
-      updateDisplays();
-    }
+  function showStatus(key) {
+    statusKey = key;
+    status.textContent = dictionary[key] || chrome.i18n.getMessage(key) || key;
+    status.classList.toggle('saved', key === 'statusSaved');
+    status.classList.toggle('error', key === 'statusError' || key === 'statusLoadError');
   }
 
-  function updateDisplays() {
-    const secText = translations.sec || (currentLang === 'ru' ? 'сек' : 'sec');
-    delayDisplay.textContent = (delaySlider.value / 1000).toFixed(1) + ' ' + secText;
-    skipDisplay.textContent = skipSlider.value + ' ' + secText;
+  function renderValues() {
+    const seconds = dictionary.sec || 'sec';
+    byId('delay-display').textContent = `${(Number(controls.delay.value) / 1000).toFixed(1)} ${seconds}`;
+    byId('skip-display').textContent = `${controls.skipLimit.value} ${seconds}`;
+    controls.delay.setAttribute('aria-valuetext', byId('delay-display').textContent);
+    controls.skipLimit.setAttribute('aria-valuetext', byId('skip-display').textContent);
+    byId('skip-settings-container').classList.toggle('hidden', !controls.skipEnabled.checked);
   }
 
-  chrome.storage.local.get(['enabled', 'delay', 'language', 'skipEnabled', 'skipLimit'], (result) => {
-    toggleScroll.checked = result.enabled !== false;
-    delaySlider.value = result.delay !== undefined ? result.delay : 1000;
-    
-    toggleSkip.checked = result.skipEnabled === true;
-    skipSlider.value = result.skipLimit || 60; 
-
-    // Умное автоопределение языка браузера при первом запуске
-    let savedLang = result.language;
-    if (!savedLang) {
-      savedLang = chrome.i18n.getUILanguage().startsWith('ru') ? 'ru' : 'en';
+  async function applyLanguage(language) {
+    const request = ++languageRequest;
+    document.documentElement.lang = language;
+    for (const [lang, button] of Object.entries(languageButtons)) {
+      button.classList.toggle('active', lang === language);
+      button.setAttribute('aria-pressed', String(lang === language));
     }
-    
-    updateSkipVisibility();
-    applyLanguage(savedLang); 
-  });
+    try {
+      const loaded = await AutoScrollSettings.translations(language);
+      if (request !== languageRequest) return;
+      dictionary = loaded;
+    } catch (error) {
+      if (request !== languageRequest) return;
+      console.error('AutoScroll: translation load failed', error);
+      dictionary = {};
+    }
+    document.querySelectorAll('[data-lang-key]').forEach(element => {
+      const key = element.dataset.langKey;
+      element.textContent = dictionary[key] || chrome.i18n.getMessage(key) || element.textContent;
+    });
+    renderValues();
+    showStatus(statusKey);
+    renderConnection();
+  }
 
-  function saveSettings() {
-    const settings = {
-      enabled: toggleScroll.checked,
-      delay: parseInt(delaySlider.value, 10),
-      skipEnabled: toggleSkip.checked,
-      skipLimit: parseInt(skipSlider.value, 10),
-      language: currentLang
-    };
-    
-    updateDisplays();
-    updateSkipVisibility();
-
-    chrome.storage.local.set(settings, () => {
-      status.textContent = translations.statusSaved || 'Saved';
-      status.classList.add('saved');
-      setTimeout(() => {
-        status.textContent = translations.statusReady || 'Ready to work';
-        status.classList.remove('saved');
-      }, 1500);
+  function save(patch) {
+    clearTimeout(statusTimer);
+    // Serialize changes, and write only the edited fields to avoid overwriting another popup.
+    writes = writes.then(async () => {
+      try {
+        await chrome.storage.local.set(patch);
+        showStatus('statusSaved');
+        clearTimeout(statusTimer);
+        statusTimer = setTimeout(() => showStatus('statusReady'), 1500);
+      } catch (error) {
+        clearTimeout(statusTimer);
+        showStatus('statusError');
+        console.error('AutoScroll: save failed', error);
+      }
     });
   }
 
-  btnEn.addEventListener('click', () => { applyLanguage('en').then(saveSettings); });
-  btnRu.addEventListener('click', () => { applyLanguage('ru').then(saveSettings); });
-
-  toggleScroll.addEventListener('change', saveSettings);
-  delaySlider.addEventListener('input', updateDisplays);
-  delaySlider.addEventListener('change', saveSettings);
-
-  toggleSkip.addEventListener('change', saveSettings);
-  skipSlider.addEventListener('input', updateDisplays);
-  skipSlider.addEventListener('change', saveSettings);
+  const allControls = [...Object.values(controls), ...Object.values(languageButtons)];
+  allControls.forEach(control => { control.disabled = true; });
+  try {
+    config = AutoScrollSettings.normalize(await chrome.storage.local.get(Object.keys(config)));
+  } catch (error) {
+    await applyLanguage(config.language);
+    showStatus('statusLoadError');
+    console.error('AutoScroll: load failed', error);
+    return;
+  }
+  for (const [key, control] of Object.entries(controls)) {
+    if (control.type === 'checkbox') control.checked = config[key];
+    else control.value = config[key];
+    control.addEventListener('input', renderValues);
+    control.addEventListener('change', () => {
+      config = AutoScrollSettings.normalize({ ...config, [key]: control.type === 'checkbox' ? control.checked : Number(control.value) });
+      // Materialize the legacy ad default before changing the independent end-scroll switch.
+      save(key === 'enabled' ? { enabled: config.enabled, skipAds: config.skipAds } : { [key]: config[key] });
+      renderValues();
+    });
+  }
+  for (const [language, button] of Object.entries(languageButtons)) {
+    button.addEventListener('click', () => {
+      config.language = language;
+      applyLanguage(language);
+      save({ language });
+    });
+  }
+  await applyLanguage(config.language);
+  allControls.forEach(control => { control.disabled = false; });
+  checkConnection();
 });

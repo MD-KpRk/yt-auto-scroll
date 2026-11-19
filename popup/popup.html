@@ -1,75 +1,87 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <link rel="stylesheet" href="style.css">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+
 </head>
 <body>
   <div class="card">
     <header>
       <div class="logo">
         <span class="logo-icon">▶</span> Shorts AutoScroll
-        <span class="badge">PRO</span>
+
       </div>
       <div class="lang-switch">
-        <span id="btn-en" class="lang-btn">EN</span>
+        <button type="button" id="btn-en" class="lang-btn" aria-pressed="false" lang="en">EN</button>
         <span class="sep">|</span>
-        <span id="btn-ru" class="lang-btn active">RU</span>
+        <button type="button" id="btn-ru" class="lang-btn" aria-pressed="false" lang="ru">RU</button>
       </div>
     </header>
 
     <div class="content">
       <div class="row">
         <div class="label-group">
-          <span class="label" data-lang-key="autoScroll">Авто-скролл</span>
+          <span class="label" id="label-toggle-scroll" data-lang-key="autoScroll">Авто-скролл</span>
           <span class="sub-label" data-lang-key="scrollDesc">Листать после окончания</span>
         </div>
         <label class="switch">
-          <input type="checkbox" id="toggle-scroll">
+          <input type="checkbox" id="toggle-scroll" aria-labelledby="label-toggle-scroll">
           <span class="slider"></span>
         </label>
       </div>
 
       <div class="row">
         <div class="label-group">
-          <span class="label" data-lang-key="skipLong">Пропуск длинных</span>
+          <span class="label" id="label-toggle-skip" data-lang-key="skipLong">Пропуск длинных</span>
           <span class="sub-label" data-lang-key="skipDesc">Если видео затянулось</span>
         </div>
         <label class="switch">
-          <input type="checkbox" id="toggle-skip">
+          <input type="checkbox" id="toggle-skip" aria-labelledby="label-toggle-skip">
           <span class="slider"></span>
         </label>
       </div>
 
+      <div class="row">
+        <div class="label-group">
+          <span class="label" id="label-toggle-ads" data-lang-key="skipAds">Skip ads</span>
+          <span class="sub-label" data-lang-key="skipAdsDesc">Skip advertising Shorts</span>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="toggle-ads" aria-labelledby="label-toggle-ads">
+          <span class="slider"></span>
+        </label>
+      </div>
       <div class="divider"></div>
 
       <div class="row column">
         <div class="label-group full-width">
-          <span class="label" data-lang-key="delay">Задержка</span>
+          <span class="label" id="label-delay-slider" data-lang-key="delay">Задержка</span>
           <span class="value-display" id="delay-display">0.0 s</span>
         </div>
-        <input type="range" id="delay-slider" min="0" max="3000" step="100" class="range-slider">
+        <input type="range" id="delay-slider" aria-labelledby="label-delay-slider" min="0" max="3000" step="100" class="range-slider">
       </div>
 
       <div class="row column hidden" id="skip-settings-container">
         <div class="label-group full-width">
-          <span class="label" data-lang-key="skipTimeLabel">Пропускать после</span>
+          <span class="label" id="label-skip-slider" data-lang-key="skipTimeLabel">Пропускать видео длиннее</span>
           <span class="value-display" id="skip-display">60 s</span>
         </div>
-        <input type="range" id="skip-slider" min="5" max="120" step="1" class="range-slider">
+        <input type="range" id="skip-slider" aria-labelledby="label-skip-slider" min="5" max="120" step="1" class="range-slider">
       </div>
     </div>
 
+    <div id="connection-status" class="status" role="status" aria-live="polite"></div>
     <footer>
-      <div id="status" class="status" data-lang-key="statusReady">Готов к работе</div>
-      <a href="https://github.com/MD-KpRk/yt-auto-scroll" target="_blank" class="github-link" title="Source Code">
+      <div id="status" class="status" role="status" aria-live="polite" data-lang-key="statusReady">Готов к работе</div>
+      <a href="https://github.com/MD-KpRk/yt-auto-scroll" target="_blank" rel="noopener noreferrer" aria-label="GitHub" class="github-link" title="Source Code">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
           <path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/>
         </svg>
       </a>
     </footer>
   </div>
+  <script src="../scripts/settings.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>
