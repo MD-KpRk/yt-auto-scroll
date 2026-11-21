@@ -38,5 +38,5 @@ globalThis.AutoScrollSettings = (() => {
       return ['https:', 'http:'].includes(parsed.protocol) && parsed.hostname === 'www.youtube.com' && /^\/shorts\/[^/]+/.test(parsed.pathname);
     } catch { return false; }
   };
-  return { normalize, translations, isShorts, anyEnabled: config => config.enabled || config.skipEnabled || config.skipAds };
+  return { normalize, translations, isShorts };
 })();

@@ -1,17 +1,22 @@
 /* Lifecycle: idle -> waiting -> scrolling, or blocked after manual navigation. */
-class YTShortsAutoScroller {
+// The install hook and the manifest can both reach the same document.
+void (globalThis.ytShortsAutoScroller ??= new class YTShortsAutoScroller {
   constructor() {
     this.config = AutoScrollSettings.normalize();
     this.rawSettings = {};
     this.i18n = {};
     this.mode = 'idle';
     this.operation = null;
+    this.savingEnabled = false;
+    this.railButton = null;
     this.current = null;
     this.dismissed = new Set();
     this.failed = new Set();
     this.blockedUntil = 0;
     this.visited = new Set();
     this.lastVisitedId = null;
+    this.feedPath = null;
+    this.entryPath = null;
     this.returnedVideoId = null;
     this.autoNavigation = null;
     this.isDebug = true;
@@ -55,9 +60,10 @@ class YTShortsAutoScroller {
     // Seeking is explicit user intent, including clicking a progress bar.
     const seekIntent = event => {
       if (!event.isTrusted || event.target.closest?.('.yt-autoscroll-wrapper')) return;
-      if (event.target.closest?.('input, textarea, [contenteditable="true"]')) return;
+      if (event.target.closest?.('input:not([type="range"]), textarea, [contenteditable="true"]')) return;
       if (event.type === 'keydown' && !['ArrowLeft', 'ArrowRight', 'Home', 'End', 'j', 'l', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'].includes(event.key)) return;
-      if (event.type === 'pointerdown' && !event.target.closest?.('.ytp-progress-bar-container, .ytp-progress-bar, .ytp-scrubber-container, [role="slider"]')) return;
+      if (event.type === 'pointerdown' && !event.target.closest?.('.ytp-progress-bar-container, .ytp-progress-bar, .ytp-scrubber-container, [role="slider"], input[type="range"]')) return;
+      if (this.current && this.current.id === this.returnedVideoId) this.current.returnSeekIntent = true;
       this.beginSeek(event.type === 'pointerdown');
     };
     window.addEventListener('pointerdown', seekIntent, { passive: true, capture: true });
@@ -107,13 +113,105 @@ class YTShortsAutoScroller {
   }
 
   running() {
-    return AutoScrollSettings.isShorts(location.href) && AutoScrollSettings.anyEnabled(this.config) && !document.hidden;
+    return this.config.enabled && AutoScrollSettings.isShorts(location.href) && !document.hidden;
+  }
+
+  async toggleEnabled() {
+    if (this.savingEnabled) return;
+    this.savingEnabled = true;
+    try {
+      await chrome.storage.local.set({ enabled: !this.config.enabled, skipAds: this.config.skipAds });
+    } catch (error) {
+      console.warn('AutoScroll: could not save switch', error);
+    } finally {
+      this.savingEnabled = false;
+    }
+  }
+
+  updateRailButton(anchor) {
+    if (!anchor) {
+      this.railHovered = false;
+      this.railTooltip?.remove();
+      this.railButton?.remove();
+      return;
+    }
+    if (!this.railButton) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'yt-autoscroll-rail-toggle';
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('viewBox', '0 0 24 24');
+      svg.setAttribute('aria-hidden', 'true');
+      const path = document.createElementNS(svg.namespaceURI, 'path');
+      path.setAttribute('d', 'M7 4.5h10M12 8v11.5m-5-5 5 5 5-5');
+      svg.append(path);
+      const caption = document.createElement('span');
+      caption.className = 'yt-autoscroll-rail-caption';
+      button.append(svg, caption);
+      button.addEventListener('click', event => {
+        event.stopPropagation();
+        this.toggleEnabled();
+      });
+      this.railTooltip = document.createElement('div');
+      this.railTooltip.className = 'yt-autoscroll-rail-tooltip';
+      for (const type of ['pointerenter', 'pointerleave', 'focus', 'blur']) {
+        button.addEventListener(type, () => {
+          if (type === 'pointerenter') this.railHovered = true;
+          if (type === 'pointerleave') this.railHovered = false;
+          this.updateTooltip(button);
+        });
+      }
+      this.railButton = button;
+    }
+    const button = this.railButton;
+    if (button.nextElementSibling !== anchor) anchor.before(button);
+    const like = anchor.matches('button') ? anchor : anchor.querySelector('button');
+    if (like) {
+      const first = like.getBoundingClientRect();
+      if (first.width > 0 && first.height > 0) {
+        button.style.width = first.width + 'px';
+        button.style.height = first.height + 'px';
+        const own = button.getBoundingClientRect();
+        // Reserve the caption line and leave 6px below it before the like button.
+        const desired = 4 + button.lastElementChild.offsetHeight + 6;
+        const actual = like.getBoundingClientRect().top - own.bottom;
+        if (Math.abs(desired - actual) >= 0.5) {
+          button.style.marginBottom = (parseFloat(getComputedStyle(button).marginBottom) + desired - actual) + 'px';
+        }
+      }
+    }
+    const captionText = !this.config.enabled
+      ? this.i18n.railDisabled || 'Disabled'
+      : this.i18n.railEnabled || 'Enabled';
+    if (button.lastElementChild.textContent !== captionText) button.lastElementChild.textContent = captionText;
+    button.dataset.tooltip = this.config.enabled ? this.i18n.turnOff || 'Turn off auto-scroll'
+      : this.i18n.turnOn || 'Turn on auto-scroll';
+    button.setAttribute('aria-label', this.i18n.autoScroll || 'Auto-scroll');
+    button.setAttribute('aria-pressed', String(this.config.enabled));
+    this.updateTooltip(button);
+  }
+
+  updateTooltip(button) {
+    const tip = this.railTooltip;
+    if (!button.isConnected || !(this.railHovered || button.matches(':focus-visible'))) {
+      tip.remove();
+      return;
+    }
+    const root = document.fullscreenElement || document.body;
+    if (tip.parentElement !== root) root.append(tip);
+    if (tip.textContent !== button.dataset.tooltip) tip.textContent = button.dataset.tooltip;
+    const rect = button.getBoundingClientRect();
+    const left = rect.left + (rect.width - tip.offsetWidth) / 2;
+    tip.style.left = Math.max(4, Math.min(left, document.documentElement.clientWidth - tip.offsetWidth - 4)) + 'px';
+    const below = rect.bottom + 24;
+    tip.style.top = (below + tip.offsetHeight + 4 <= innerHeight ? below : Math.max(4, rect.top - tip.offsetHeight - 4)) + 'px';
   }
 
   allowed(type, video) {
-    if (this.current && this.current.id === this.returnedVideoId) return false;
+    if (!this.config.enabled || (this.current && this.current.id === this.returnedVideoId)) return false;
     if (type === 'end') return this.config.enabled;
     if (type === 'ad') return this.config.skipAds && AutoScrollYouTube.isAd(video);
+    if (this.entryPath && this.entryPath === location.pathname) return false;
     return this.config.skipEnabled && !AutoScrollYouTube.isAd(video) && Number.isFinite(video.duration) && video.duration > this.config.skipLimit;
   }
 
@@ -171,7 +269,7 @@ class YTShortsAutoScroller {
     if (video && id && id !== this.lastVisitedId) {
       const automatic = this.autoNavigation && this.autoNavigation.from !== id && Date.now() < this.autoNavigation.until;
       this.returnedVideoId = this.visited.has(id) && !automatic ? id : null;
-      if (this.returnedVideoId) this.debugLog('Manual return: keeping this video until manual navigation', { videoId: id });
+      if (this.returnedVideoId) this.debugLog('Manual return: automatic transitions blocked', { videoId: id });
       this.remember(this.visited, id);
       this.lastVisitedId = id;
       this.autoNavigation = null;
@@ -192,6 +290,12 @@ class YTShortsAutoScroller {
     }
     video.addEventListener('seeked', () => {
       if (!this.current || this.current.video !== video) return;
+      if (this.current.returnSeekIntent && this.returnedVideoId === id && !video.ended && video.currentTime < video.duration) {
+        this.current.returnSeekIntent = false;
+        this.returnedVideoId = null;
+        if (this.config.enabled) video.loop = false;
+        this.debugLog('Manual seek after return: end-of-video scrolling enabled', { videoId: id });
+      }
       if (!this.current.pendingEnd && !this.current.seekDragging) this.finishSeek();
       this.evaluate();
     }, options);
@@ -212,6 +316,21 @@ class YTShortsAutoScroller {
   }
 
   refresh() {
+    // Track the route even while hidden or disabled. Only the first Short in this visit
+    // is exempt from the duration limit; metadata and player replacement can arrive later.
+    const path = AutoScrollSettings.isShorts(location.href) ? location.pathname : null;
+    if (path !== this.feedPath) {
+      this.entryPath = this.feedPath === null ? path : null;
+      this.feedPath = path;
+      if (!path) {
+        this.visited.clear();
+        this.lastVisitedId = null;
+        this.returnedVideoId = null;
+        this.autoNavigation = null;
+      }
+    }
+    const video = path && !document.hidden ? AutoScrollYouTube.activeVideo() : null;
+    this.updateRailButton(AutoScrollYouTube.likeAction(video));
     if (!this.running()) {
       this.stopOperation(true);
       this.detachVideo();
@@ -219,7 +338,6 @@ class YTShortsAutoScroller {
       this.debugStatus();
       return;
     }
-    const video = AutoScrollYouTube.activeVideo();
     const id = AutoScrollYouTube.identity(video);
     if (video !== this.current?.video || id !== this.current?.id || video?.currentSrc !== this.current?.source || location.pathname !== this.current?.path) {
       this.attachVideo(video, id);
@@ -244,7 +362,7 @@ class YTShortsAutoScroller {
 
   status() {
     const reason = !AutoScrollSettings.isShorts(location.href) ? 'not-shorts'
-      : !AutoScrollSettings.anyEnabled(this.config) ? 'disabled'
+      : !this.config.enabled ? 'disabled'
       : document.hidden ? 'hidden' : !this.current ? 'no-video'
       : this.current.id === this.returnedVideoId ? 'manual-return'
       : this.current.seekDragging || this.current.video.seeking || Date.now() < this.current.seekBlockUntil ? 'seeking'
@@ -372,6 +490,4 @@ class YTShortsAutoScroller {
       result?.catch(error => console.warn('AutoScroll: playback could not resume', error));
     } catch (error) { console.warn('AutoScroll: playback could not resume', error); }
   }
-}
-
-new YTShortsAutoScroller();
+}());

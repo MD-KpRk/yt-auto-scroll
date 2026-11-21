@@ -6,7 +6,7 @@ const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const source = file => fs.readFileSync(path.join(root, file), 'utf8');
 
-function setup(config = {}) {
+function setup(config = {}, directEntry = false) {
   let now = 10000, serial = 0, active, advances = 0;
   const timers = new Map();
   class Video extends EventTarget {
@@ -26,15 +26,25 @@ function setup(config = {}) {
     document: { hidden: false }, location: { href: 'https://www.youtube.com/shorts/one', pathname: '/shorts/one' },
     IntersectionObserver: class { observe() {} disconnect() {} },
     AutoScrollOverlay: class { update() {} remove() {} },
-    AutoScrollYouTube: { activeVideo: () => active, identity: video => video?.id || null,
+    AutoScrollYouTube: { activeVideo: () => active, likeAction: () => null, identity: video => video?.id || null,
       isAd: video => video.ad, next: () => { advances++; } }
   });
   vm.runInContext(source('scripts/settings.js'), ctx);
-  vm.runInContext(source('scripts/content.js').replace('new YTShortsAutoScroller();', 'globalThis.Scroller = YTShortsAutoScroller;'), ctx);
+  const controllerSource = source('scripts/content.js')
+    .replace('void (globalThis.ytShortsAutoScroller ??= new class', 'globalThis.Scroller = class')
+    .replace(/\}\(\)\);\s*$/, '};');
+  vm.runInContext(controllerSource, ctx);
+  const init = ctx.Scroller.prototype.init;
   ctx.Scroller.prototype.init = function () {};
   const scroller = new ctx.Scroller();
   scroller.rawSettings = { ...config };
   scroller.config = ctx.AutoScrollSettings.normalize(config);
+  if (!directEntry) {
+    // Most playback tests exercise a Short reached by scrolling within a feed.
+    ctx.location = new URL('https://www.youtube.com/shorts/intro');
+    scroller.refresh();
+    ctx.location = new URL('https://www.youtube.com/shorts/one');
+  }
   active = new Video();
   scroller.refresh();
   function tick(ms) {
@@ -46,7 +56,7 @@ function setup(config = {}) {
     }
     now = end;
   }
-  return { ctx, scroller, video: active, Video, timers, tick,
+  return { ctx, scroller, init, video: active, Video, timers, tick,
     setActive(video) { active = video; }, get advances() { return advances; } };
 }
 
@@ -109,7 +119,7 @@ test('delay changes replace a countdown without leaving a stale timer', () => {
 });
 
 test('long-video setting works independently and disabling it cancels a countdown', () => {
-  const h = setup({ enabled: false, skipEnabled: true, skipAds: false });
+  const h = setup({ enabled: true, skipEnabled: true, skipAds: false });
   assert.equal(h.scroller.operation.type, 'long');
   h.scroller.settingsChanged({ skipEnabled: { newValue: false } }); h.tick(5000);
   assert.equal(h.advances, 0); assert.equal(h.video.paused, false);
@@ -122,7 +132,7 @@ test('raising duration limit cancels pending skip and resumes playback', () => {
 });
 
 test('ads work independently and have a cancellable setting', () => {
-  const h = setup({ enabled: false, skipEnabled: false, skipAds: true });
+  const h = setup({ enabled: true, skipEnabled: false, skipAds: true });
   h.video.ad = true; h.tick(500); h.scroller.refresh();
   assert.equal(h.scroller.operation.type, 'ad');
   h.scroller.settingsChanged({ skipAds: { newValue: false } }); h.tick(5000);
@@ -235,8 +245,8 @@ test('background icons respond to SPA URLs and independent settings', async () =
   vm.runInContext(source('scripts/background.js'), ctx);
   await handlers.installed();
   assert.ok(icons.every(icon => icon.path.endsWith('deactivated.png')));
-  stored.skipEnabled = true;
-  handlers.settings({ skipEnabled: { newValue: true } }, 'local');
+  stored.enabled = true;
+  handlers.settings({ enabled: { newValue: true } }, 'local');
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(icons.at(-2).path, 'assets/icons/YT-icon-active.png');
   assert.equal(icons.at(-1).path, 'assets/icons/YT-icon-deactivated.png');
@@ -259,14 +269,63 @@ test('YouTube automatic seek to start still triggers scrolling after seeked', ()
 
 test('startup does not wait for translations to resolve', async () => {
   const h = setup();
-  vm.runInContext(source('scripts/content.js').replace('class YTShortsAutoScroller', 'class StartupScroller').replace('new YTShortsAutoScroller();', 'globalThis.StartupScroller = StartupScroller;'), h.ctx);
   h.ctx.chrome.storage = { local: { get: async () => ({}) }, onChanged: { addListener() {} } };
   h.ctx.window = { addEventListener() {} }; h.ctx.document.addEventListener = () => {};
   let watchdog = false;
   h.ctx.setInterval = () => { watchdog = true; };
   h.ctx.AutoScrollSettings.translations = () => new Promise(() => {});
-  await h.ctx.StartupScroller.prototype.init.call(h.scroller);
+  await h.init.call(h.scroller);
   assert.equal(watchdog, true);
+});
+
+test('script reinjection leaves a single controller and watchdog', async () => {
+  const { ctx } = setup();
+  let listeners = 0, watchdogs = 0;
+  ctx.chrome.runtime.onMessage.addListener = () => { listeners++; };
+  ctx.chrome.storage = { local: { get: async () => ({}) }, onChanged: { addListener() {} } };
+  ctx.window = { addEventListener() {} };
+  ctx.document.addEventListener = () => {};
+  ctx.setInterval = () => { watchdogs++; };
+  ctx.AutoScrollSettings.translations = async () => ({});
+  const script = source('scripts/content.js');
+  vm.runInContext(script, ctx);
+  const controller = ctx.ytShortsAutoScroller;
+  vm.runInContext(script, ctx);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(ctx.ytShortsAutoScroller, controller);
+  assert.equal(listeners, 1);
+  assert.equal(watchdogs, 1);
+});
+
+test('install connects existing YouTube tabs, including tabs outside Shorts', async () => {
+  const manifest = JSON.parse(source('manifest.json'));
+  const [content] = manifest.content_scripts;
+  const queries = [], injected = [], styled = [];
+  const noopEvent = { addListener() {} };
+  let installed;
+  const ctx = vm.createContext({ console, importScripts() {}, chrome: {
+    runtime: { getManifest: () => manifest, onInstalled: { addListener(fn) { installed = fn; } }, onStartup: noopEvent },
+    tabs: { onUpdated: noopEvent, onActivated: noopEvent, async query(filter) {
+      queries.push(filter);
+      return filter.url ? [
+        { id: 1, url: 'https://www.youtube.com/shorts/one' },
+        { id: 2, url: 'https://www.youtube.com/watch?v=two' },
+        { id: 3, discarded: true }
+      ] : [];
+    } },
+    storage: { local: { get: async () => ({}) }, onChanged: noopEvent },
+    scripting: {
+      async executeScript({ target, files }) { injected.push([target.tabId, files]); return [{ documentId: `doc-${target.tabId}` }]; },
+      async insertCSS({ target, files }) { styled.push([target.tabId, target.documentIds[0], files]); }
+    }
+  }, AutoScrollSettings: { normalize: data => data, anyEnabled: () => true } });
+  vm.runInContext(source('scripts/background.js'), ctx);
+  await installed({ reason: 'update' });
+  assert.equal(injected.length, 0);
+  await installed({ reason: 'install' });
+  assert.deepEqual(queries.find(query => query.url).url, content.matches);
+  assert.deepEqual(injected, [[1, content.js], [2, content.js]]);
+  assert.deepEqual(styled, [[1, 'doc-1', content.css], [2, 'doc-2', content.css]]);
 });
 
 
@@ -353,4 +412,82 @@ test('a timer cannot advance while seeking even before seeking callback', () => 
   const h = setup(); h.scroller.start(h.video, 'end');
   h.video.seeking = true; h.tick(1000);
   assert.equal(h.advances, 0); assert.equal(h.scroller.operation, null);
+});
+
+test('entry from a direct link, channel or search ignores length only for the selected Short', () => {
+  for (const origin of [null, '/@channel/shorts', '/results?search_query=shorts']) {
+    const h = setup({ skipEnabled: true, delay: 0 }, true);
+    if (origin) {
+      h.ctx.location = new URL(origin, 'https://www.youtube.com');
+      h.scroller.refresh();
+      h.ctx.location = new URL('https://www.youtube.com/shorts/one');
+      h.scroller.refresh();
+    }
+    h.tick(5000);
+    h.scroller.refresh();
+    assert.equal(h.advances, 0, 'selected long video stays visible');
+    h.video.ended = true;
+    h.video.paused = true;
+    h.video.dispatchEvent(new Event('ended'));
+    assert.equal(h.advances, 1, 'normal end still advances');
+    h.ctx.location = new URL('https://www.youtube.com/shorts/two');
+    h.setActive(new h.Video('two'));
+    h.scroller.refresh();
+    assert.equal(h.advances, 2, 'duration limit applies to next long video');
+  }
+});
+
+test('after manual return, scrubbing near the end allows one transition on actual completion', async () => {
+  const h = setup({ delay: 0 });
+  const handlers = {};
+  h.ctx.window = { addEventListener(type, fn) { (handlers[type] ??= []).push(fn); } };
+  h.ctx.document.addEventListener = () => {};
+  h.ctx.setInterval = () => {};
+  h.ctx.chrome.storage = { local: { get: async () => ({ delay: 0 }) }, onChanged: { addListener() {} } };
+  h.ctx.AutoScrollSettings.translations = async () => ({});
+  await h.init.call(h.scroller);
+  h.scroller.start(h.video, 'end');
+  h.setActive(new h.Video('two')); h.scroller.refresh();
+  h.scroller.block(); h.setActive(h.video); h.scroller.refresh();
+  assert.equal(h.scroller.status().reason, 'manual-return');
+  const target = { closest: selector => selector.includes('.ytp-progress-bar') ? target : null };
+  handlers.pointerdown.forEach(fn => fn({ type: 'pointerdown', isTrusted: true, target }));
+  h.video.currentTime = h.video.duration - 0.1;
+  h.video.dispatchEvent(new Event('seeking'));
+  handlers.pointerup.forEach(fn => fn());
+  h.video.dispatchEvent(new Event('seeked'));
+  assert.equal(h.video.loop, false);
+  assert.equal(h.advances, 1);
+  h.video.currentTime = h.video.duration;
+  h.video.ended = true; h.video.paused = true;
+  h.video.dispatchEvent(new Event('ended'));
+  h.tick(2100); h.scroller.refresh();
+  assert.equal(h.advances, 2);
+});
+
+test('rail and popup share the master setting across tabs and preserve skip preferences', async () => {
+  for (const delay of [0, 1000]) {
+    const tabs = [setup({ skipEnabled: true, skipAds: true, delay }), setup({ skipEnabled: true, skipAds: true, delay })];
+    const save = async patch => {
+      for (const tab of tabs) tab.scroller.settingsChanged(Object.fromEntries(
+        Object.entries(patch).map(([key, newValue]) => [key, { newValue }])
+      ));
+    };
+    tabs[0].ctx.chrome.storage = { local: { set: save } };
+    const counts = tabs.map(tab => tab.advances);
+    await tabs[0].scroller.toggleEnabled();
+    tabs.forEach((tab, i) => {
+      tab.tick(5000);
+      assert.equal(tab.scroller.config.enabled, false);
+      assert.equal(tab.scroller.status().reason, 'disabled');
+      assert.equal(tab.advances, counts[i]);
+      assert.equal(tab.scroller.config.skipEnabled, true);
+    });
+    await save({ enabled: true });
+    tabs.forEach((tab, i) => {
+      tab.tick(delay);
+      assert.equal(tab.scroller.config.enabled, true);
+      assert.equal(tab.advances, counts[i] + 1);
+    });
+  }
 });

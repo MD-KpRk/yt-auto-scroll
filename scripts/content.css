@@ -127,3 +127,58 @@ button.yt-autoscroll-ring { padding: 0; border: 0; background: transparent; }
 @media (prefers-reduced-motion: reduce) {
   .yt-autoscroll-wrapper * { animation: none !important; transition: none !important; }
 }
+.yt-autoscroll-rail-toggle {
+  position: relative;
+  overflow: visible;
+  appearance: none;
+  display: grid;
+  place-items: center;
+  align-self: center;
+  width: 48px;
+  height: 48px;
+  flex: none;
+  margin: 0 auto 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: #333;
+  color: var(--yt-spec-static-overlay-text-primary, #fff);
+  cursor: pointer;
+}
+.yt-autoscroll-rail-toggle:hover { background: #484848; }
+.yt-autoscroll-rail-caption {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  height: 16px;
+  min-width: 100%;
+  text-align: center;
+  white-space: nowrap;
+  font: 500 12px/16px Roboto, Arial, sans-serif;
+}
+.yt-autoscroll-rail-caption::before {
+  content: "";
+  position: absolute;
+  bottom: 100%;
+  inset-inline: 0;
+  /* Bridge the gap and the rounded lower corners of the button. */
+  height: calc(4px + 1.5em);
+}
+.yt-autoscroll-rail-toggle[aria-pressed="false"] svg,
+.yt-autoscroll-rail-toggle:disabled svg { opacity: .58; }
+.yt-autoscroll-rail-toggle:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.yt-autoscroll-rail-tooltip {
+  position: fixed;
+  z-index: 2147483647;
+  box-sizing: border-box;
+  max-width: calc(100vw - 8px);
+  overflow-wrap: anywhere;
+  padding: 8px 10px;
+  border-radius: 5px;
+  background: rgba(82, 82, 82, .96);
+  color: #fff;
+  font: 400 12px/16px Roboto, Arial, sans-serif;
+  pointer-events: none;
+}
+.yt-autoscroll-rail-toggle svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }

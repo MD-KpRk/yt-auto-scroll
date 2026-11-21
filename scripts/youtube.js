@@ -1,6 +1,18 @@
 /* Keep YouTube DOM assumptions in one place. */
 globalThis.AutoScrollYouTube = {
   container: 'ytd-reel-video-renderer, .reel-video-in-sequence, .reel-video-in-sequence-new',
+  likeAction(video) {
+    const reel = video?.closest(this.container);
+    const like = reel?.querySelector('#like-button, ytd-like-button-renderer, like-button-view-model');
+    if (!like) return null;
+    // Insert alongside the whole action, outside its clickable area and counter.
+    const rail = like.closest('#actions, #button-bar, reel-action-bar-view-model');
+    let item = like;
+    if (rail && rail !== item) {
+      while (item.parentElement !== rail) item = item.parentElement;
+    }
+    return item;
+  },
   isAd(video) {
     const container = video.closest(this.container);
     return Boolean(container && (container.hasAttribute('is-ad') || container.querySelector('ytd-ad-slot-renderer, ad-button-view-model')));

@@ -82,5 +82,9 @@
   },
   "connectionManualReturn": {
     "message": "manual return: automatic transitions blocked"
-  }
+  },
+  "railEnabled": { "message": "Enabled" },
+  "railDisabled": { "message": "Disabled" },
+  "turnOff": { "message": "Turn off auto-scroll" },
+  "turnOn": { "message": "Turn on auto-scroll" }
 }

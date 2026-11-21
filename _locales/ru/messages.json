@@ -82,5 +82,9 @@
   },
   "connectionManualReturn": {
     "message": "ручной возврат: автопереход заблокирован"
-  }
+  },
+  "railEnabled": { "message": "Включено" },
+  "railDisabled": { "message": "Выключено" },
+  "turnOff": { "message": "Выключить автоскролл" },
+  "turnOn": { "message": "Включить автоскролл" }
 }

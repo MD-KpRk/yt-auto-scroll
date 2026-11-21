@@ -108,6 +108,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     console.error('AutoScroll: load failed', error);
     return;
   }
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'local' || !changes.enabled) return;
+    config = AutoScrollSettings.normalize({ ...config, enabled: changes.enabled.newValue });
+    controls.enabled.checked = config.enabled;
+    connectionDetails = '';
+    connectionReason = '';
+    checkConnection();
+  });
   for (const [key, control] of Object.entries(controls)) {
     if (control.type === 'checkbox') control.checked = config[key];
     else control.value = config[key];
